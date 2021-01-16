@@ -1,7 +1,6 @@
-# sister-in-law contracts
-Currently sister-in-law is running in pending mode, contract code is not revealed and only skeleton code is available for view.
+# Sister-in-law 
 
-Code will be available AFTER main-net launch.
+[https://sil.finance](https://sil.finance)
 
 # Audit
 
