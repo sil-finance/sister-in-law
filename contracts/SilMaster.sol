@@ -37,7 +37,7 @@ contract SilMaster is Ownable , TrustList{
 
     // Info of each pool.
     struct PoolInfo {
-        IMatchPair lpToken;           // Address of LP token contract.
+        IMatchPair matchPair;           // Address of LP token contract.
         uint256 allocPoint;       // How many allocation points assigned to this pool. SILs to distribute per block.
 
         uint256 lastRewardBlock;  // Last block number that SILs distribution occurs by token0.
@@ -53,6 +53,9 @@ contract SilMaster is Ownable , TrustList{
     SilToken public sil;
     // Dev address.
     address public devaddr;
+    // 10% is the community reserve, which is used by voting through governance contracts
+    address public ecosysaddr;
+    // 
     address public repurchaseaddr;
     address public WETH;
     //IMintRegulator 
@@ -65,6 +68,7 @@ contract SilMaster is Ownable , TrustList{
     // Bonus muliplier for early sil makers.
     uint256 public bonus_multiplier;
     uint256 public maxAcceptMultiple = 3;
+    uint256 public maxAcceptMultipleDenominator = 9;
  
     // Info of each pool.
     PoolInfo[] public poolInfo;
@@ -90,6 +94,7 @@ contract SilMaster is Ownable , TrustList{
     constructor(
             SilToken _sil,
             address _devaddr,
+            address _ecosysaddr,
             address _repurchaseaddr,
             // uint256 _silPerBlock,
             // uint256 _startBlock,
@@ -98,6 +103,8 @@ contract SilMaster is Ownable , TrustList{
         ) public {
         sil = _sil;
         devaddr = _devaddr;
+        ecosysaddr = _ecosysaddr;
+        
         repurchaseaddr = _repurchaseaddr;
         // silPerBlock = _silPerBlock;
         // baseSilPerBlock = _silPerBlock;
@@ -115,7 +122,7 @@ contract SilMaster is Ownable , TrustList{
         onlyOwner()
     {
         require(startBlock == 0, "Init only once" );
-        baseSilPerBlock = _silPerBlock;
+        silPerBlock = _silPerBlock;
         bonusEndBlock = _bonusEndBlock;
         startBlock = _startBlock;
         baseSilPerBlock = _silPerBlock;
@@ -135,8 +142,9 @@ contract SilMaster is Ownable , TrustList{
      * @dev setting max accept multiple. must > 1
      * maxDepositAmount = pool.lp.tokenAmount * multiple - pool.pendingAmount
      */
-    function setMintRegulator(uint _maxAcceptMultiple) public onlyOwner() {
+    function setMintRegulator(uint _maxAcceptMultiple, uint _maxAcceptMultipleDenominator) public onlyOwner() {
         maxAcceptMultiple = _maxAcceptMultiple;
+        maxAcceptMultipleDenominator = _maxAcceptMultipleDenominator;
     } 
     
     function updateSilPerBlock() public {
@@ -154,7 +162,7 @@ contract SilMaster is Ownable , TrustList{
 
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IMatchPair _lpToken) public onlyOwner {
+    function add(uint256 _allocPoint, IMatchPair _matchPair) public onlyOwner {
 
         // if (_withUpdate) {
         massUpdatePools();
@@ -162,7 +170,7 @@ contract SilMaster is Ownable , TrustList{
         uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
         totalAllocPoint = totalAllocPoint.add(_allocPoint);
         poolInfo.push(PoolInfo({
-            lpToken: _lpToken,
+            matchPair: _matchPair,
             allocPoint: _allocPoint,
             lastRewardBlock: lastRewardBlock,
             totalDeposit0: 0,
@@ -186,6 +194,11 @@ contract SilMaster is Ownable , TrustList{
 
     // Return reward multiplier over the given _from to _to block.
     function getMultiplier(uint256 _from, uint256 _to) public view returns (uint256) {
+
+        if(_from < startBlock) {
+            _from = startBlock;
+        }
+
         if (_to <= bonusEndBlock) {
             return _to.sub(_from).mul(bonus_multiplier);
         } else if (_from >= bonusEndBlock) {
@@ -206,7 +219,7 @@ contract SilMaster is Ownable , TrustList{
         uint256 accSilPerShare = _index == 0? pool.accSilPerShare0 : pool.accSilPerShare1;
         uint256 lpSupply = _index == 0? pool.totalDeposit0 : pool.totalDeposit1;
         
-        if (block.number > pool.lastRewardBlock && lpSupply != 0) {
+        if (block.number > pool.lastRewardBlock && lpSupply != 0) {            
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
             uint256 silReward = multiplier.mul(silPerBlock).mul(pool.allocPoint).div(totalAllocPoint);//
             uint256 totalMint = sil.balanceOf(address(this));
@@ -234,30 +247,36 @@ contract SilMaster is Ownable , TrustList{
         if (block.number <= pool.lastRewardBlock) {
             return;
         }
-        
-        uint256 silReward;
-        if(!sil.mintOver()) {
-            uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
-            //mint
-            silReward = multiplier.mul(silPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
-        }
-        silReward = getFeeRewardAmount(pool.allocPoint, pool.lastRewardBlock).add(silReward);
-        
         uint256 lpSupply0 = pool.totalDeposit0;
         uint256 lpSupply1 = pool.totalDeposit1;
 
-        if(lpSupply0 > 0) {
-
-            pool.accSilPerShare0 = pool.accSilPerShare0.add(silReward.mul(1e12).div(lpSupply0).div(2));
-        }
-        if(lpSupply1 > 0) {
-            pool.accSilPerShare1 = pool.accSilPerShare1.add(silReward.mul(1e12).div(pool.totalDeposit1).div(2));
-        }
-
-
         if(lpSupply0.add(lpSupply1) > 0 ) {
-            sil.mint(devaddr, silReward.div(10));
-            sil.mint(address(this), silReward);
+            uint256 silReward;
+            if(!sil.mintOver()) {
+                uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+                silReward = multiplier.mul(silPerBlock).mul(pool.allocPoint).div(totalAllocPoint);
+            }
+            //add fee Reward if exist
+            silReward = getFeeRewardAmount(pool.allocPoint, pool.lastRewardBlock).add(silReward);
+            // token0 side
+            if(lpSupply0 > 0) {
+                pool.accSilPerShare0 = pool.accSilPerShare0.add(silReward.mul(1e12).div(lpSupply0).div(2));
+            }
+            // token1 side
+            if(lpSupply1 > 0) {
+                pool.accSilPerShare1 = pool.accSilPerShare1.add(silReward.mul(1e12).div(pool.totalDeposit1).div(2));
+            }
+            if(lpSupply0 ==0 || lpSupply1==0) {
+                silReward = silReward.div(2);
+            }
+
+
+
+            if(silReward > 0){        
+                sil.mint(devaddr, silReward.mul(17).div(68)); // 17%
+                sil.mint(ecosysaddr, silReward.mul(15).div(68)); // 15%
+                sil.mint(address(this), silReward); // 68%
+            }
         }
         
         pool.lastRewardBlock = block.number;
@@ -278,17 +297,14 @@ contract SilMaster is Ownable , TrustList{
         uint256 acceptAmount;
         if(whaleSpear) {
             PoolInfo storage pool = poolInfo[_pid];
-            acceptAmount = pool.lpToken.maxAcceptAmount(_index, maxAcceptMultiple, _amount);
+            acceptAmount = pool.matchPair.maxAcceptAmount(_index, maxAcceptMultiple, maxAcceptMultipleDenominator, _amount);
         }else {
             acceptAmount = _amount;
         }
-
-
         IWETH(WETH).deposit{value: acceptAmount}();
         deposit(_pid, _index, acceptAmount);
         //chargeback
         if(_amount > acceptAmount) {
-
             safeTransferETH(msg.sender , _amount.sub(acceptAmount));
         }
     }
@@ -304,7 +320,7 @@ contract SilMaster is Ownable , TrustList{
         updatePool(_pid);
         if(whaleSpear) {
 
-            _amount = pool.lpToken.maxAcceptAmount(_index, maxAcceptMultiple, _amount);
+            _amount = pool.matchPair.maxAcceptAmount(_index, maxAcceptMultiple, maxAcceptMultipleDenominator, _amount);
 
         }
         
@@ -318,14 +334,14 @@ contract SilMaster is Ownable , TrustList{
         }
 
         if(_amount > 0) {
-            address tokenTarget = pool.lpToken.token(_index);
+            address tokenTarget = pool.matchPair.token(_index);
             if(tokenTarget == WETH) {
-                safeTransfer(WETH, address(pool.lpToken), _amount);
+                safeTransfer(WETH, address(pool.matchPair), _amount);
             }else{
-                safeTransferFrom( pool.lpToken.token(_index), msg.sender,  address(pool.lpToken), _amount);
+                safeTransferFrom( pool.matchPair.token(_index), msg.sender,  address(pool.matchPair), _amount);
             }
             //stake to MatchPair
-            pool.lpToken.stake(_index, msg.sender, _amount);
+            pool.matchPair.stake(_index, msg.sender, _amount);
             user.amount = user.amount.add(_amount);
             user.totalDeposit = user.totalDeposit.add(_amount); 
             if(_index0) {
@@ -346,14 +362,11 @@ contract SilMaster is Ownable , TrustList{
 
         //withdrawToken from MatchPair
 
-        uint256 untakeTokenAmount = pool.lpToken.untakeToken(_index, _user, _amount);
-        address targetToken = pool.lpToken.token(_index);
+        uint256 untakeTokenAmount = pool.matchPair.untakeToken(_index, _user, _amount);
+        address targetToken = pool.matchPair.token(_index);
 
 
         uint256 userAmount = untakeTokenAmount.mul(995).div(1000);
-
-
-
 
         withdraw(_pid, _index, _user, untakeTokenAmount);
         if(targetToken == WETH) {
@@ -363,8 +376,8 @@ contract SilMaster is Ownable , TrustList{
             safeTransferETH(_user, userAmount);
             safeTransferETH(repurchaseaddr, untakeTokenAmount.sub(userAmount) );
         }else {
-            safeTransfer(pool.lpToken.token(_index),  _user, userAmount);
-            safeTransfer(pool.lpToken.token(_index),  repurchaseaddr, untakeTokenAmount.sub(userAmount));
+            safeTransfer(pool.matchPair.token(_index),  _user, userAmount);
+            safeTransfer(pool.matchPair.token(_index),  repurchaseaddr, untakeTokenAmount.sub(userAmount));
         }
     }
     // Withdraw LP tokens from SilMaster.
@@ -373,7 +386,8 @@ contract SilMaster is Ownable , TrustList{
         bool _index0 = _index == 0;
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = _index0? userInfo0[_pid][_user] :  userInfo1[_pid][_user];
-
+        //record withdraw origin Amount
+        user.totalWithdraw = user.totalWithdraw.add(_amount);
         if(user.amount < _amount) {
             _amount = user.amount;
         }
@@ -387,7 +401,6 @@ contract SilMaster is Ownable , TrustList{
 
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
-            user.totalWithdraw = user.totalWithdraw.add(_amount);
             if(_index0) {
                 pool.totalDeposit0 = pool.totalDeposit0.sub(_amount);
             }else {
@@ -401,11 +414,12 @@ contract SilMaster is Ownable , TrustList{
      * @dev withdraw SILToken mint by deposit token0 & token1
      */
     function withdrawSil(uint256 _pid) public {
-        
+
         updatePool(_pid);
+
         uint256 silAmount0 = withdrawSilCalcu(_pid, 0, msg.sender);
         uint256 silAmount1 = withdrawSilCalcu(_pid, 1, msg.sender);
-        
+
         safeSilTransfer(msg.sender, silAmount0.add(silAmount1));
         
         emit WithdrawSilToken(msg.sender, _pid, silAmount0, silAmount1);
@@ -446,6 +460,12 @@ contract SilMaster is Ownable , TrustList{
         devaddr = _devaddr;
     }
 
+    function ecosys(address _ecosysaddraddr) public {
+        require(msg.sender == ecosysaddr, "decosysaddrev: wut?");
+        ecosysaddr = _ecosysaddraddr;
+    }
+    
+
     function repurchase(address _repurchaseaddr) public {
         require(msg.sender == repurchaseaddr, "feeAddr: wut?");
         repurchaseaddr = _repurchaseaddr;
@@ -474,7 +494,6 @@ contract SilMaster is Ownable , TrustList{
     {
         //update all poll first
         massUpdatePools();
-
         if (block.number >= periodFinish) {
             feeRewardRate = reward.div(duration);
         } else {

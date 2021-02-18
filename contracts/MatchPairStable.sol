@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.6.12;
+pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
@@ -56,12 +57,13 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
         uint256 rate;
         uint256 rate2;
     }
-    
+    uint256 safeProtect = 50;
     //LP token Address
     IUniswapV2Pair public lpToken;
     //queue
-    QueuePoolInfo queueStake0;
-    QueuePoolInfo queueStake1;
+    //tood tobe private in mainnet
+    QueuePoolInfo public queueStake0;
+    QueuePoolInfo public queueStake1;
 
     IStakeGatling stakeGatling;
 
@@ -117,9 +119,9 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
             
             pairRound = pairRound + 1;
             //mint LP
-            uint liquidity = lpToken.mint(address(this));
+            uint liquidity = lpToken.mint(stakeGatling.lpStakeDst());
             // stake via stakeGatling
-            TransferHelper.safeTransfer(address(lpToken), address(stakeGatling), liquidity);
+            // TransferHelper.safeTransfer(address(lpToken), address(stakeGatling), liquidity);
             stakeGatling.stake(liquidity); // update Percent
 
             uint256 presentRate = stakeGatling.presentRate();
@@ -159,9 +161,9 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
         onlyMasterCaller()
         returns (uint256 _tokenAmount) 
     {
-        //
+
         bool index0 = _index == 0;
-        address tokenCurrent = index0 ? lpToken.token0() : lpToken.token1();
+        
         _tokenAmount = untakePending(index0, _user, _amount);
         
         if(_tokenAmount < _amount) {
@@ -169,15 +171,12 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
             //update rate
             stakeGatling.withdraw(0);
             uint256 presentRate = stakeGatling.presentRate();
-            stakeGatling.presentRate();
 //57
 
-            
             ( UserAmount[] memory originAccountCurrent,
               UserAmount[] memory originAccountPaired, 
               uint256[] memory amountArray) = lpOriginAccountCalc( RequestWrapper(_index, _user, amountRequerViaLp, presentRate, 0 ));
-              
-             
+                           
             if(amountArray[2] > 0) {
                 (uint tokenCurrent, uint tokenPaired) = coverageLose(_index, amountArray[0], amountArray[1], amountArray[2]);
 
@@ -190,8 +189,10 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
                 _tokenAmount = _tokenAmount.add(tokenCurrent);
             }
         }
+        //
+        updatePool();
         // transfer to Master
-        TransferHelper.safeTransfer(tokenCurrent, masterCaller(), _tokenAmount);
+        TransferHelper.safeTransfer(index0 ? lpToken.token0() : lpToken.token1(), masterCaller(), _tokenAmount);
     }
 
     function distributePairedOrigin(bool index0, uint256 tokenPerShare, UserAmount[] memory originAccountPaired ) private {
@@ -241,11 +242,13 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
         if(enoughCurrent == enoughPaired) { //ture ture || false false
 
         }else {
+            //false
             bool sellCurrent = enoughCurrent;
 
             // paired lose
             uint256 amountLoss  = sellCurrent ? amountOriginSumPaired.sub(tokenPaired) : amountOriginSumCurrent.sub(tokenCuurent);
             uint256 amountWin = sellCurrent ? tokenCuurent.sub(amountOriginSumCurrent) : tokenPaired.sub(amountOriginSumPaired);
+
             uint256 regainRequireAmount = getAmountVinIndexed(sellCurrent ? pairedIndex : _index,  amountLoss);
             
             uint256 sellAmount;
@@ -256,6 +259,7 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
                 // half profit
                 sellAmount = amountWin.sub(regainRequireAmount).div(2).add(regainRequireAmount);
             }
+
             //sell
             regainRequireAmount = execSwap(sellCurrent? _index : pairedIndex, sellAmount);
 
@@ -366,23 +370,25 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
     function burnLp(uint256 _index, uint256 _lpAmount) private returns (uint256 tokenCurrent, uint256 tokenPaired) {
         //send LP to address(this);
         // update profitRate
-        bool index0 = _index == 0;
-        address lpAddress = address(lpToken);
-        
-        stakeGatling.withdraw(_lpAmount);
+        if(_lpAmount > safeProtect) {
+            bool index0 = _index == 0;
+            // address lpAddress = address(lpToken);
+            // stakeGatling.withdraw(_lpAmount);
+            //
+            // TransferHelper.safeTransfer(lpAddress, lpAddress, _lpAmount);
+            // (tokenCurrent, tokenPaired) = lpToken.burn(address(this));
 
-
-
-        TransferHelper.safeTransfer(lpAddress, lpAddress, _lpAmount);
-
-        (tokenCurrent, tokenPaired) = lpToken.burn(address(this));
-        if(_index == 1) {
-            (tokenCurrent, tokenPaired) = (tokenPaired, tokenCurrent );
+            (tokenCurrent, tokenPaired) = stakeGatling.burn(address(this), _lpAmount);
+            if(_index == 1) {
+                (tokenCurrent, tokenPaired) = (tokenPaired, tokenCurrent );
+            }
         }
-
     }
 
      // LP to Priority
+     /***
+      * @dev uint256[] memory 0 currentSum, 1 pairedSum, 2 lpS
+      */
     function lpOriginAccountCalc(RequestWrapper memory request) 
         private
         returns (UserAmount[] memory , UserAmount[] memory , uint256[] memory )
@@ -415,6 +421,7 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
  //69
 
             (uint256 originPairAmount , UserAmount[] memory paireArray) = untakePairedLP( (cutLp10round % 1e10).mul(10).add(request.index ==0 ? 1:0), cutLp10round.div(1e10)+1, request.rate);
+
 
             originAccountPaired = mergeArray(originAccountPaired, paireArray);
 
@@ -458,12 +465,12 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
             return (0, UserAmount( address(0), 0));
         }
         // inflate profit
-        uint256 amount = userStake.amount.mul(_presentRate).div(userStake.perRate); // profit
+        uint256 lpAmount = userStake.amount.mul(_presentRate).div(userStake.perRate); // profit
 
         address _user = userStake.user;
         uint256 _round = userStake.round;   
         uint256 _lpPerToken = userStake.lpPerToken;
-        uint256 originTokenAmount = amount.mul(1e36).div(_lpPerToken);
+        uint256 originTokenAmount = lpAmount.mul(1e36).div(_lpPerToken);
 //79
         UserAmount memory userAmount = UserAmount( _user, 0);
         uint256 cutLp;
@@ -473,18 +480,18 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
             if(amountLeft == 0 ) {
                 userStake.amount = 0;
                 userLp.pop();
-                cutLp = amount;
+                cutLp = lpAmount;
             }else {
-                userStake.amount = amountLeft.mul(amount).div(originTokenAmount);
+                userStake.amount = protectAmount(amountLeft.mul(lpAmount).div(originTokenAmount));
                 userStake.perRate = _presentRate;
-                cutLp = amount.sub(amountLeft.mul(amount).div(originTokenAmount).add(1));
+                cutLp = lpAmount.sub(amountLeft.mul(lpAmount).div(originTokenAmount).add(1));
             }
             userAmount.amount = requireTokenAmount;
 
         }else {
             userStake.amount = 0; 
             userLp.pop();
-            cutLp = amount;
+            cutLp = lpAmount;
             userAmount.amount = cutLp.mul(1e36).div(_lpPerToken); 
         }
 
@@ -496,12 +503,18 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
         private
         returns (uint256 amountOriginSumOther, UserAmount[] memory)
     {
-        UserStableStake[] storage queueStakesOther =  _roundAndIndex %10 == 0? queueStake0.lpQueue : queueStake1.lpQueue;        
+        UserStableStake[] storage queueStakesOther =  _roundAndIndex %10 == 0? queueStake0.lpQueue : queueStake1.lpQueue;
+
+
+
         uint[] storage pairLpIndex = roundLpIndex[_roundAndIndex %10][_roundAndIndex/10];
         
+
         // uint256 amountOriginSumOther;
         UserAmount[] memory originAccountOther = new UserAmount[](pairLpIndex.length);
-
+        if(queueStakesOther.length == 0) {
+            return (0, originAccountOther);
+        }
 
 
         uint i;
@@ -510,20 +523,22 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
             if( _amountLp == 0 ){
                 break;
             }
-            UserStableStake storage userPair = queueStakesOther[pairLpIndex.length - 1];
+            UserStableStake storage userPair = queueStakesOther[pairLpIndex[pairLpIndex.length - 1]];
 
 
             if(userPair.amount == 0) {
                 pairLpIndex.pop(); //removeEnd
                 continue;
             }
+
             uint256 amountPairLp = userPair.amount.mul(_presentRateC).div(userPair.perRate); // profit
 
             if(amountPairLp >= _amountLp) {
-                userPair.amount = amountPairLp.sub(_amountLp);
+                userPair.amount =  amountPairLp.sub(_amountLp);
                 userPair.perRate = _presentRateC;
 
                 amountOriginSumOther = amountOriginSumOther.add(_amountLp.mul(1e36).div(userPair.lpPerToken));
+
                 originAccountOther[i] = UserAmount( userPair.user, _amountLp.mul(1e36).div(userPair.lpPerToken));
                 break;
             }else {
@@ -575,6 +590,8 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
                 //mark lpQueue index
                 poolinfo.userLP[userStableStake.user].push(poolinfo.lpQueue.length);
 
+
+
                 roundLpIndex[_index0 ? 0: 1][_pairRound].push(poolinfo.lpQueue.length);
 
                 uint256 lpAmount = untakeAmount.mul(lpPreShare).div(1e36);
@@ -582,7 +599,7 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
 
                 poolinfo.lpQueue.push( UserStableStake( userStableStake.user, lpAmount, _presentRate , lpPreShare, _pairRound));
 
-                untakeAmount = 0; 
+                untakeAmount = 0;
                 break;
             }else {
                 untakeAmount = untakeAmount.sub(amount);
@@ -596,6 +613,7 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
 
                 uint256 lpAmount = amount.mul(lpPreShare).div(1e36);
 
+
                 poolinfo.lpQueue.push(UserStableStake( userStableStake.user, lpAmount, _presentRate, lpPreShare , _pairRound));
             }
         }
@@ -603,6 +621,7 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
 
     function getAmountVinIndexed(uint256 _outIndex, uint256 _amountOut ) private returns(uint256 amountIn) {
         (uint256 _reserveIn, uint256 _reserveOut,) = lpToken.getReserves();
+
         if(_outIndex == 0) {
             (_reserveIn, _reserveOut) = (_reserveOut, _reserveIn);
         }
@@ -632,6 +651,11 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
         uint denominator = reserveIn.mul(1000).add(amountInWithFee);
         amountOut = numerator / denominator;
     }
+
+    function protectAmount(uint256 _amount) private returns(uint256) {
+        return _amount > safeProtect? _amount : 0;
+    }
+
     /** >>>>>>>  Call functions ,the following list  <<<<<<<<<<< */
 
     function lPAmount(uint256 _index, address _user) public view returns (uint256) {
@@ -688,15 +712,15 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
         uint balance0 = IERC20(_token0).balanceOf(address(lpToken));
         uint balance1 = IERC20(_token1).balanceOf(address(lpToken));
 
-        // //
-        // //
+
+
 
         amount0 = _liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = _liquidity.mul(balance1) / _totalSupply;
 
     }
 
-    function maxAcceptAmount(uint256 _index, uint256 _times, uint256 _inputAmount) public view override returns (uint256) {
+    function maxAcceptAmount(uint256 _index, uint256 _molecular, uint256 _denominator, uint256 _inputAmount) public view override returns (uint256) {
         
         QueuePoolInfo storage info =  _index == 0? queueStake0: queueStake1;
         (uint256 amount0, uint256 amount1) = stakeGatling.totalToken();
@@ -704,11 +728,10 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
         uint256 pendingTokenAmount = info.totalPending;
         uint256 lpTokenAmount =  _index == 0 ? amount0 : amount1;
 
-        require(lpTokenAmount.mul(_times) > pendingTokenAmount, "Amount in pool less than PendingAmount");
-        uint256 maxAmount = lpTokenAmount.mul(_times).sub(pendingTokenAmount);
+        require(lpTokenAmount.mul(_molecular).div(_denominator) > pendingTokenAmount, "Amount in pool less than PendingAmount");
+        uint256 maxAmount = lpTokenAmount.mul(_molecular).div(_denominator).sub(pendingTokenAmount);
         
         return _inputAmount > maxAmount ? maxAmount : _inputAmount ; 
-        
     }
 
     function queueTokenAmount(uint256 _index) public view override  returns (uint256) {
@@ -743,6 +766,29 @@ contract MatchPairStable is  IMatchPair, Ownable, MasterCaller{
 
     function getReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) {
         return lpToken.getReserves();
+    }
+    // todo to be remove
+    function userLPLength(uint256 _side, address _account) external view  returns(uint256){
+            QueuePoolInfo storage queueStake = _side == 0? queueStake0 : queueStake1;
+            return queueStake.userLP[_account].length;
+    }
+
+    function userLPIndex(uint256 _side, address _account) external view returns(UserStableStake[] memory ) {
+
+        uint256[] storage _userLp =  _side == 0? queueStake0.userLP[_account] : queueStake1.userLP[_account];
+        UserStableStake[] storage _lpQueue =  _side == 0? queueStake0.lpQueue : queueStake1.lpQueue;
+
+        UserStableStake[] memory stakes = new UserStableStake[](_userLp.length); 
+
+        for (uint i=0; i < _userLp.length; i++) { 
+            stakes[i] = _lpQueue[_userLp[i]];
+        }
+        return stakes;
+    }
+
+    function roundMap(uint256 _side, uint256 _round) external view returns(uint256[] memory) {
+
+        return roundLpIndex[_side][_round];
     }
 
 }

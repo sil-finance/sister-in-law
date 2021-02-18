@@ -8,7 +8,7 @@ import './interfaces/IUniswapV2Factory.sol';
 import './interfaces/IUniswapV2Callee.sol';
 
 
-import "hardhat/console.sol";
+
 interface IMigrator {
     // Return the desired amount of liquidity token that the migrator wants.
     function desiredLiquidity() external view returns (uint256);
@@ -142,7 +142,6 @@ contract UniswapV2Pair is UniswapV2ERC20 {
         if (feeOn) kLast = uint(reserve0).mul(reserve1); // reserve0 and reserve1 are up-to-date
         emit Mint(msg.sender, amount0, amount1);
     }
-
     // this low-level function should be called from a contract which performs important safety checks
     function burn(address to) external lock returns (uint amount0, uint amount1) {
         (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
@@ -156,7 +155,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
         uint _totalSupply = totalSupply; // gas savings, must be defined here since totalSupply can update in _mintFee
         amount0 = liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = liquidity.mul(balance1) / _totalSupply; // using balances ensures pro-rata distribution
-        console.log("UNI.burn", amount0, amount1);
+
         require(amount0 > 0 && amount1 > 0, 'UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED');
         _burn(address(this), liquidity);
         _safeTransfer(_token0, to, amount0);
@@ -174,7 +173,7 @@ contract UniswapV2Pair is UniswapV2ERC20 {
         if( amount0Out > 0 || amount1Out > 0 ) {
             require(amount0Out > 0 || amount1Out > 0, 'UniswapV2: INSUFFICIENT_OUTPUT_AMOUNT');
             (uint112 _reserve0, uint112 _reserve1,) = getReserves(); // gas savings
-            console.log("UNI.swap.reserve", _reserve0/1e18, _reserve1/1e18 );
+
             require(amount0Out < _reserve0 && amount1Out < _reserve1, 'UniswapV2: INSUFFICIENT_LIQUIDITY');
 
             uint balance0;

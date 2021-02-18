@@ -1,31 +1,17 @@
-pragma solidity 0.6.12;
+// SPDX-License-Identifier: MIT
 
+pragma solidity 0.6.12;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 
-// Sister In Law with Governance.
-contract SilToken is ERC20, Ownable {
-    uint256 public maxMint;
-    bool public mintOver;
-    constructor ( uint256 _maxMint ) ERC20("SIL Token", "SIL") public  {
-        maxMint = _maxMint;
-    }
-
-    /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (SilMaster).
-    
+// SushiToken with Governance.
+contract SushiToken is ERC20("SushiToken", "SUSHI"), Ownable {
+    /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (MasterChef).
     function mint(address _to, uint256 _amount) public onlyOwner {
-
-        if(totalSupply()+ _amount <= maxMint ) {
-            _mint(_to, _amount);
-            _moveDelegates(address(0), _delegates[_to], _amount);
-        }else {
-            mintOver = true;
-            uint256 mintAmount = maxMint - totalSupply();
-             _mint(_to, mintAmount);
-            _moveDelegates(address(0), _delegates[_to], mintAmount);
-        }
+        _mint(_to, _amount);
+        _moveDelegates(address(0), _delegates[_to], _amount);
     }
 
     // Copied and modified from YAM code:
@@ -130,9 +116,9 @@ contract SilToken is ERC20, Ownable {
         );
 
         address signatory = ecrecover(digest, v, r, s);
-        require(signatory != address(0), "CYZ::delegateBySig: invalid signature");
-        require(nonce == nonces[signatory]++, "CYZ::delegateBySig: invalid nonce");
-        require(now <= expiry, "CYZ::delegateBySig: signature expired");
+        require(signatory != address(0), "SUSHI::delegateBySig: invalid signature");
+        require(nonce == nonces[signatory]++, "SUSHI::delegateBySig: invalid nonce");
+        require(now <= expiry, "SUSHI::delegateBySig: signature expired");
         return _delegate(signatory, delegatee);
     }
 
@@ -162,7 +148,7 @@ contract SilToken is ERC20, Ownable {
         view
         returns (uint256)
     {
-        require(blockNumber < block.number, "CYZ::getPriorVotes: not yet determined");
+        require(blockNumber < block.number, "SUSHI::getPriorVotes: not yet determined");
 
         uint32 nCheckpoints = numCheckpoints[account];
         if (nCheckpoints == 0) {
@@ -193,11 +179,6 @@ contract SilToken is ERC20, Ownable {
             }
         }
         return checkpoints[account][lower].votes;
-    }
-
-    function _transfer(address sender, address recipient, uint256 amount) internal override virtual {
-        super._transfer(sender, recipient, amount);
-        _moveDelegates(_delegates[sender], _delegates[recipient], amount);
     }
 
     function _delegate(address delegator, address delegatee)
@@ -240,7 +221,7 @@ contract SilToken is ERC20, Ownable {
     )
         internal
     {
-        uint32 blockNumber = safe32(block.number, "CYZ::_writeCheckpoint: block number exceeds 32 bits");
+        uint32 blockNumber = safe32(block.number, "SUSHI::_writeCheckpoint: block number exceeds 32 bits");
 
         if (nCheckpoints > 0 && checkpoints[delegatee][nCheckpoints - 1].fromBlock == blockNumber) {
             checkpoints[delegatee][nCheckpoints - 1].votes = newVotes;

@@ -8,7 +8,7 @@ import "./interfaces/IPriceSafeChecker.sol";
 
 
 
-contract PriceChainLinkCheker is IPriceSafeChecker, Ownable {
+contract PriceChainLinkChecker is IPriceSafeChecker, Ownable {
     using SafeMath for uint256; 
 
     // 1WETH = 1021 USDT, Token1 = WETH; Price = Rusdt/ Reth
@@ -24,9 +24,7 @@ contract PriceChainLinkCheker is IPriceSafeChecker, Ownable {
     AggregatorV3Interface internal priceFeed;
 
     /**
-     * Network: Kovan
      * Aggregator: ETH/USD
-     * Address: 0x9326BFA02ADD2366b30bacB125260Af641031331
      */
     constructor(address _oracle, bool _token1Direct) public {
         priceFeed = AggregatorV3Interface(_oracle);

@@ -7,7 +7,7 @@ import "./interfaces/IPriceSafeChecker.sol";
 
 
 
-contract PriceSafeCheker is IPriceSafeChecker, Ownable {
+contract PriceSafeChecker is IPriceSafeChecker, Ownable {
     using SafeMath for uint256; 
 
     // 1WETH = 1021 USDT, Token1 = WETH; Price = Rusdt/ Reth

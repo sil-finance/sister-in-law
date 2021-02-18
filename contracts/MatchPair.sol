@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.6.12;
+pragma experimental ABIEncoderV2;
 
 import "@openzeppelin/contracts/math/SafeMath.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
@@ -21,8 +22,9 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
     using SafeERC20 for IERC20;
     using QueueStakesFuns for QueueStakes;
     using SafeMath for uint256; 
-    
 
+    uint256 safeProtect = 50;
+    
     struct QueuePoolInfo {
         //LP Token : LIFO
         UserStake[] lpQueue;
@@ -41,8 +43,8 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
     //LP token Address
     IUniswapV2Pair public lpToken;
     //queue
-    QueuePoolInfo queueStake0;
-    QueuePoolInfo queueStake1;
+    QueuePoolInfo public queueStake0;
+    QueuePoolInfo public queueStake1;
 
     IStakeGatling public stakeGatling;
     IPriceSafeChecker priceChecker;
@@ -78,22 +80,20 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
             
             (uint amountA, uint amountB) = getPairAmount( lpToken.token0(), lpToken.token1(), pendingA, pendingB ); 
 
-            if(IERC20(lpToken.token0()).balanceOf(address(this)) >= amountA) {
+            // if(IERC20(lpToken.token0()).balanceOf(address(this)) >= amountA) {
                 TransferHelper.safeTransfer(lpToken.token0(), address(lpToken), amountA);
-            }
-            if(IERC20(lpToken.token1()).balanceOf(address(this)) >= amountB) {
+            // }
+            // if(IERC20(lpToken.token1()).balanceOf(address(this)) >= amountB) {
                 TransferHelper.safeTransfer(lpToken.token1(), address(lpToken), amountB);
-            }
+            // }
             //mint LP
-            uint liquidity = lpToken.mint(address(this));
+            uint liquidity = lpToken.mint(stakeGatling.lpStakeDst());
             //send Token to UniPair
-            TransferHelper.safeTransfer(address(lpToken), address(stakeGatling), liquidity);
-
             stakeGatling.stake(liquidity); // update Percent
             uint256 presentRate = stakeGatling.presentRate();
 
-            //
-            //
+
+
 
             pending2LP(true, amountA, liquidity, presentRate);//
             pending2LP(false,amountB, liquidity, presentRate);
@@ -140,10 +140,10 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
             if(requirLp > 0) { 
                 
                 uint256 burnedTokenAmount = untakeLP(_index, _user, requirLp);
-                // //
+
         //         // send to user
                 _tokenAmount = _tokenAmount.add(burnedTokenAmount);
-                //
+
             }
         }
         // transfer to Master
@@ -151,39 +151,35 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
     }
 
     function untakeLP(uint256 _index, address _user,uint256 _amount) private returns (uint256) {
-        //send LP to address(this);
         // update profitRate
         stakeGatling.withdraw(0);
         uint256 presentRate = stakeGatling.presentRate();
         bool index0 = _index == 0;
         //untake Specifical User LP. reqire user.lpAmount >= _amount;
         uint256 _untakeLP = lp2PriorityQueueSpecifical(index0, _user, _amount , presentRate);
-        if(_untakeLP == 0 ){
+        if(_untakeLP < 100 ){ //todo _untakeLP == 3
             return 0;
         }
-        
-        stakeGatling.withdraw(_untakeLP);
-        
-        // burn LP
-        address lpAddress = address(lpToken);
-        //
-        TransferHelper.safeTransfer(lpAddress, lpAddress, _untakeLP);
+        /** gas saving:: implment in strage */
+        // stakeGatling.withdraw(_untakeLP);
+        // // burn LP
+        // address lpAddress = address(lpToken);
+        // TransferHelper.safeTransfer(lpAddress, lpAddress, _untakeLP);
+        // (uint amount0, uint amount1) = lpToken.burn(address(this));
+        /** gas saving:: implment in strage */
+        (uint amount0, uint amount1) = stakeGatling.burn(address(this), _untakeLP);
 
-        (uint amount0, uint amount1) = lpToken.burn(address(this));
-        
-        (uint amountC , uint amountOther) = index0? (amount0, amount1) : (amount1, amount0);  
-        //      
+        (uint amountC , uint amountOther) = index0? (amount0, amount1) : (amount1, amount0);
+      
         // //send Token to Specifical user
         address tokenCurrent = index0 ? lpToken.token0() : lpToken.token1();
-        //
+
         
-        // TransferHelper.safeTransfer(tokenCurrent, _user, amountC);
-        // // TransferHelper.safeTransfer(tokenCurrent, _user, amountC);
         // // // Partner`s LP to Pending
         uint tokenPreShare = amountOther.mul(1e36).div(_untakeLP);
 
-        // //
-        // //
+
+
         
         //move Partner`s LP to priorityQueue
         lp2PriorityQueue(!index0, _untakeLP, tokenPreShare, presentRate);
@@ -198,7 +194,7 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
     }
     function balanceOfToken0(address _user) external view override returns (uint256) {
         return tokenAmount(0, _user);
-    } 
+    }
     function balanceOfToken1(address _user) external view override returns (uint256) {
        return tokenAmount(1, _user);
     }
@@ -231,10 +227,6 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
     //add to quequeEnd
     function toQueue(bool _isFirst, address _user,  uint256 _amount) private {
         QueuePoolInfo storage self =  getQueuePoolInfo(_isFirst); // _isFirst? queueStake0 : queueStake1;
-
-        //
-        //
-        //
 
         uint256 pIndex =  self.pendingQueue.append(UserStake( _user, _amount, 0));
         self.totalPending = self.totalPending.add(_amount);
@@ -278,11 +270,13 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         QueuePoolInfo storage self = _index0? queueStake0 : queueStake1;
         uint256[] storage priorityIndex = self.userPriority[_user];
         uint256 untakeAmount;
+
         while( priorityIndex.length > 0 ) {
             uint256 pIndex = priorityIndex[priorityIndex.length.sub(1)];
             UserStake storage userStake = self.priorityQueue.indexOf(pIndex);
             uint256 amount = userStake.amount;
             //self assets only allows
+
             if(userStake.user != _user ) {
                 break;
             }
@@ -301,50 +295,51 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
     function pending2LP(bool _index0, uint256 _amount, uint256 _liquidity, uint256 _presentRate) private {
         // lpRate
         uint256 lpPreShare =  _liquidity.mul(1e36).div(_amount);
-        //
-        // //
+
+
         uint leftAmount = moveQueue2LP(_index0, true, _amount, lpPreShare, _presentRate);
-        //
+
         if(leftAmount>0) {
             moveQueue2LP(_index0, false, leftAmount, lpPreShare, _presentRate);
         }
         //update totalPending
         QueuePoolInfo storage self = _index0? queueStake0 : queueStake1;
         self.totalPending = self.totalPending.sub(_amount);
-    }
+}
+    
     // LP to Priority
     function lp2PriorityQueueSpecifical(bool _index0, address _user, uint256 _amount, uint256 _presentRate) private returns(uint256 untakeAmount) {
         QueuePoolInfo storage self = _index0? queueStake0 : queueStake1;
         uint256[] storage lpIndex = self.userLP[_user];
         
-        //
+
         while( lpIndex.length > 0 ) {
             uint256 pIndex = lpIndex[lpIndex.length.sub(1)];
             UserStake storage userStake = self.lpQueue[pIndex]; 
             if(userStake.user != _user) {
                 break;
             }
-            //
-            //
+
+
             // inflate profit
             uint256 amount = userStake.amount.mul(_presentRate).div(userStake.perRate);
+
             if(untakeAmount.add(amount)>= _amount) {
-                userStake.amount =  untakeAmount.add(amount).sub(_amount);
+                userStake.amount = protectAmount(untakeAmount.add(amount).sub(_amount));
                 untakeAmount = _amount;
                 if(userStake.amount == 0){
                     lpIndex.pop();
                 }else {
                     userStake.perRate = _presentRate; //updateRate
                 }
-                //
+
                 break;
             }else{
                 untakeAmount = untakeAmount.add(amount);
                 userStake.amount = 0; // if userStatel is not tail, cannot pop
                 lpIndex.pop();
             }
-            //
-            
+
         }
     }
 
@@ -354,14 +349,13 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         UserStake[] storage queueStakes =  _index0? queueStake0.lpQueue : queueStake1.lpQueue;
         mapping(address => uint256[]) storage userLp =  _index0? queueStake0.userLP : queueStake1.userLP;
         uint untakeAmount = _amount;
-        //
+
         while(queueStakes.length>0) {
             //latest one
             UserStake storage userStake = queueStakes[queueStakes.length.sub(1)];
             // inflate profit
             uint256 amount = userStake.amount.mul(_presentRate).div(userStake.perRate); // profit
 
-            //
 
             address _user = userStake.user;
             if(amount ==0) {
@@ -370,23 +364,23 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
                 continue;
             }
             if(untakeAmount <= amount) {
+                appendPriority(_index0, _user, untakeAmount, _preShare);
                 if(untakeAmount == amount ) {
                     userStake.amount = 0;
                     queueStakes.pop();
                     userLp[_user].pop();
                 }else {
-                    userStake.amount = amount.sub(untakeAmount);
+                    userStake.amount = protectAmount(amount.sub(untakeAmount));
                     userStake.perRate = _presentRate;
-                }            
-                appendPriority(_index0, userStake.user, untakeAmount, _preShare);
+                }
                 untakeAmount = 0; 
                 break;
             }else {
+                appendPriority(_index0, _user, amount, _preShare);
                 untakeAmount = untakeAmount.sub(amount);
                 userStake.amount = 0; 
                 queueStakes.pop();
                 userLp[_user].pop();
-                appendPriority(_index0, userStake.user, amount, _preShare);
             }
         }
     }
@@ -427,11 +421,20 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
      * move pending to LP
      */
     function appendLP(bool _index0,address _user, uint _amount, uint _lpRate, uint256 _presentRate) private {
-        QueuePoolInfo storage self = _index0? queueStake0 : queueStake1;
-        self.userLP[_user].push(self.lpQueue.length);
-        uint256 lpAmount = _amount.mul(_lpRate).div(1e36);
-        self.lpQueue.push(UserStake( _user, lpAmount, _presentRate));
-        //
+
+
+        //Small amounts cause calculation failure
+        if(_amount > safeProtect) {
+            QueuePoolInfo storage self = _index0? queueStake0 : queueStake1;
+            self.userLP[_user].push(self.lpQueue.length);
+            uint256 lpAmount = _amount.mul(_lpRate).div(1e36);
+            self.lpQueue.push(UserStake( _user, lpAmount, _presentRate));
+
+        }
+    }
+
+    function protectAmount(uint256 _amount) private returns(uint256) {
+        return _amount > safeProtect? _amount : 0;
     }
     /**
      * move pending to Priority
@@ -441,7 +444,7 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         QueuePoolInfo storage self = _index0? queueStake0 : queueStake1;   
         uint256 pid = self.priorityQueue.append(UserStake( _user, _amount.mul(_lpRate).div(1e36), 0));
         self.userPriority[_user].push(pid);
-        //
+
         self.totalPending = self.totalPending.add( _amount.mul(_lpRate).div(1e36));
     }
 
@@ -463,7 +466,7 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         return totalLPAmount;
     }
 
-     function tokenAmount(uint256 _index, address _user) public view returns (uint256) {
+    function tokenAmount(uint256 _index, address _user) public view returns (uint256) {
         //gatlin profit rate
         uint256 totalLPAmount;
         QueuePoolInfo storage self = _index == 0? queueStake0 : queueStake1;
@@ -508,7 +511,7 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
 
     }
 
-    function maxAcceptAmount(uint256 _index, uint256 _times, uint256 _inputAmount) public view override returns (uint256) {
+    function maxAcceptAmount(uint256 _index, uint256 _molecular, uint256 _denominator, uint256 _inputAmount) public view override returns (uint256) {
         
         QueuePoolInfo storage info =  _index == 0? queueStake0: queueStake1;
         (uint256 amount0, uint256 amount1) = stakeGatling.totalToken();
@@ -516,22 +519,33 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         uint256 pendingTokenAmount = info.totalPending;
         uint256 lpTokenAmount =  _index == 0 ? amount0 : amount1;
 
-        require(lpTokenAmount.mul(_times) > pendingTokenAmount, "Amount in pool less than PendingAmount");
-        uint256 maxAmount = lpTokenAmount.mul(_times).sub(pendingTokenAmount);
+        require(lpTokenAmount.mul(_molecular).div(_denominator) > pendingTokenAmount, "Amount in pool less than PendingAmount");
+        uint256 maxAmount = lpTokenAmount.mul(_molecular).div(_denominator).sub(pendingTokenAmount);
         
         return _inputAmount > maxAmount ? maxAmount : _inputAmount ; 
-
-        //
-        // if(maxAmount > 0) {
-        //  return _inputAmount > maxAmount ? maxAmount : _inputAmount ; 
-        // }else {
-        //    return _inputAmount;
-        // }
-        
     }
 
     function getReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) {
         return lpToken.getReserves();
     }
 
+
+    // todo to be remove
+    function userLPLength(uint256 _side, address _account) external view  returns(uint256){
+            QueuePoolInfo storage queueStake = _side == 0? queueStake0 : queueStake1;
+            return queueStake.userLP[_account].length;
+    }
+
+    function userLPIndex(uint256 _side, address _account) external view returns(UserStake[] memory ) {
+
+        uint256[] storage _userLp =  _side == 0? queueStake0.userLP[_account] : queueStake1.userLP[_account];
+        UserStake[] storage _lpQueue =  _side == 0? queueStake0.lpQueue : queueStake1.lpQueue;
+
+        UserStake[] memory stakes = new UserStake[](_userLp.length); 
+
+        for (uint i=0; i < _userLp.length; i++) { 
+            stakes[i] = _lpQueue[_userLp[i]];
+        }
+        return stakes;
+    }
 }
