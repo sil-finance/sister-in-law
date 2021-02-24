@@ -14,7 +14,6 @@ contract SilToken is ERC20, Ownable {
     }
 
     /// @notice Creates `_amount` token to `_to`. Must only be called by the owner (SilMaster).
-    
     function mint(address _to, uint256 _amount) public onlyOwner {
 
         if(totalSupply()+ _amount <= maxMint ) {
@@ -26,6 +25,11 @@ contract SilToken is ERC20, Ownable {
              _mint(_to, mintAmount);
             _moveDelegates(address(0), _delegates[_to], mintAmount);
         }
+    }
+
+    function reduce(uint256 _reduceAmount) public onlyOwner() {
+        require(_reduceAmount.add(totalSupply()) < maxMint , "Reduce over amount");
+        maxMint = maxMint.sub(_reduceAmount);
     }
 
     // Copied and modified from YAM code:

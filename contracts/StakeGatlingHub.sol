@@ -211,7 +211,7 @@ contract StakeGatlingHub is Ownable, IStakeGatling, MasterCaller {
         }
     }
 
-    function sellEarn2TokenTwice() private returns (address _tokenAddress) {
+    function sellEarn2TokenTwice() private{
 
         (address _token0, address _token1) = (stakeLpPair.token0(), stakeLpPair.token1());
 

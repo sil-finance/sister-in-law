@@ -15,59 +15,22 @@ import "./utils/MasterCaller.sol";
 import "./interfaces/IStakeGatling.sol";
 import "./interfaces/IMatchPair.sol";
 import "./interfaces/IPriceSafeChecker.sol";
+import "./MatchPairStorage.sol";
 
 
 
-contract MatchPair is  IMatchPair, Ownable, MasterCaller{
+contract MatchPairDelegate is MatchPairStorage, IMatchPair, Ownable, MasterCaller{
     using SafeERC20 for IERC20;
     using QueueStakesFuns for QueueStakes;
     using SafeMath for uint256; 
 
-    uint256 safeProtect = 50;
-    
-    struct QueuePoolInfo {
-        //LP Token : LIFO
-        UserStake[] lpQueue;
-        //from LP to priorityQueue :FIFO
-        QueueStakes priorityQueue;
-        //Single Token  : FIFO
-        QueueStakes pendingQueue;
-        //Queue Total
-        uint256 totalPending;
-        //index of User index
-        mapping(address => uint256[]) userLP;
-        mapping(address => uint256[]) userPriority;
-        mapping(address => uint256[]) userPending;
+    constructor() public {
+        // lpToken =  IUniswapV2Pair(_lpToken);
+        // createQueue(true, 10e7);
+        // createQueue(false, 10e7);
     }
 
-    //LP token Address
-    IUniswapV2Pair public lpToken;
-    //queue
-    QueuePoolInfo public queueStake0;
-    QueuePoolInfo public queueStake1;
-
-    IStakeGatling public stakeGatling;
-    IPriceSafeChecker priceChecker;
-    
-    uint256 profitRateDenominator;
-
-    event Stake(bool _index0, address _user, uint256 _amount);
-    // int256 constant INT256_MAX = int256(~(uint256(1) << 255));
-    constructor(address _lpToken) public {
-        lpToken =  IUniswapV2Pair(_lpToken);
-        createQueue(true, 10e7);
-        createQueue(false, 10e7);
-    }
-    function setPriceSafeChecker(address _priceChecker) public onlyOwner() {
-        priceChecker = IPriceSafeChecker(_priceChecker);
-    }
-    
-    function setStakeGatling(address _gatlinAddress) public onlyOwner() {
-        stakeGatling = IStakeGatling(_gatlinAddress);
-        profitRateDenominator =   stakeGatling.profitRateDenominator();
-    }
-
-    function stake(uint256 _index, address _user,uint256 _amount) public override onlyMasterCaller() {
+    function stake(uint256 _index, address _user,uint256 _amount) public override {
         
         toQueue(_index == 0, _user, _amount);
         updatePool();
@@ -104,7 +67,7 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         address tokenA,
         address tokenB,
         uint amountADesired,
-        uint amountBDesired  ) public returns ( uint amountA, uint amountB) {
+        uint amountBDesired  ) private returns ( uint amountA, uint amountB) {
             
         (uint reserveA, uint reserveB,) = lpToken.getReserves();
         if(address(priceChecker) != address(0) ) {
@@ -123,7 +86,6 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
     function untakeToken(uint256 _index, address _user,uint256 _amount) 
         public
         override
-        onlyMasterCaller()
         returns (uint256 _tokenAmount) 
     {
         bool index0 = _index == 0;
@@ -160,16 +122,13 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         if(_untakeLP < 100 ){ //todo _untakeLP == 3
             return 0;
         }
-        /** gas saving:: implment in strage */
-        // stakeGatling.withdraw(_untakeLP);
-        // // burn LP
-        // address lpAddress = address(lpToken);
-        // TransferHelper.safeTransfer(lpAddress, lpAddress, _untakeLP);
-        // (uint amount0, uint amount1) = lpToken.burn(address(this));
-        /** gas saving:: implment in strage */
-        (uint amount0, uint amount1) = stakeGatling.burn(address(this), _untakeLP);
+        // (uint amount0, uint amount1) = stakeGatling.burn(address(this), _untakeLP);
+        // (uint amountC , uint amountOther) = index0? (amount0, amount1) : (amount1, amount0);
 
-        (uint amountC , uint amountOther) = index0? (amount0, amount1) : (amount1, amount0);
+        (uint amountC, uint amountOther) = stakeGatling.burn(address(this), _untakeLP);
+        if(!index0) {
+             (amountC , amountOther) = (amountOther, amountC);
+        }
       
         // //send Token to Specifical user
         address tokenCurrent = index0 ? lpToken.token0() : lpToken.token1();
@@ -179,7 +138,6 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         uint tokenPreShare = amountOther.mul(1e36).div(_untakeLP);
 
 
-
         
         //move Partner`s LP to priorityQueue
         lp2PriorityQueue(!index0, _untakeLP, tokenPreShare, presentRate);
@@ -187,43 +145,11 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         updatePool();
         return amountC;
     }
-
-    function queueTokenAmount(uint256 _index) public view override  returns (uint256) {
-        QueuePoolInfo storage self = _index == 0? queueStake0 : queueStake1;
-        return self.totalPending;
-    }
-    function balanceOfToken0(address _user) external view override returns (uint256) {
-        return tokenAmount(0, _user);
-    }
-    function balanceOfToken1(address _user) external view override returns (uint256) {
-       return tokenAmount(1, _user);
-    }
-    //LP0 - LP1 Amount
-    function balanceOfLP0(address _user) external view override returns (uint256) {
-        return lPAmount(0, _user);
-    }
-    function balanceOfLP1(address _user) external view override  returns (uint256) {
-        return lPAmount(1, _user);
-    }
-
+    
     function token(uint256 _index) public view override returns (address) {
         return _index == 0 ? lpToken.token0() : lpToken.token1();
     }
 
-    function token0() public view override returns (address) {
-        return lpToken.token0();
-    }
-
-    function token1() public view override returns (address) {
-        return lpToken.token1();
-    }
-
-    /**  From Library  */
-    function createQueue(bool _isFirst, uint256 _size) private {
-        QueuePoolInfo storage self = _isFirst? queueStake0 : queueStake1;
-        self.priorityQueue.create(_size);
-        self.pendingQueue.create(_size);
-    }
     //add to quequeEnd
     function toQueue(bool _isFirst, address _user,  uint256 _amount) private {
         QueuePoolInfo storage self =  getQueuePoolInfo(_isFirst); // _isFirst? queueStake0 : queueStake1;
@@ -305,7 +231,7 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         //update totalPending
         QueuePoolInfo storage self = _index0? queueStake0 : queueStake1;
         self.totalPending = self.totalPending.sub(_amount);
-}
+    }
     
     // LP to Priority
     function lp2PriorityQueueSpecifical(bool _index0, address _user, uint256 _amount, uint256 _presentRate) private returns(uint256 untakeAmount) {
@@ -459,8 +385,6 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         //lpQueue partion
         for (uint i=0; i< lps.length; i++) {
             uint256 amount = lpQueue[lps[i]].amount.mul(presentRate).div(lpQueue[lps[i]].perRate);
-            // uint256 amount = lpQueue[lps[i]].amount.mul(presentRate).div(profitRateDenominator);
-            // uint256 amount = lpQueue[lps[i]].amount;
             totalLPAmount = totalLPAmount.add(amount);
         }
         return totalLPAmount;
@@ -495,6 +419,11 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         return totalLPAmount;
     }
 
+    function queueTokenAmount(uint256 _index) public view override  returns (uint256) {
+        QueuePoolInfo storage self = _index == 0? queueStake0 : queueStake1;
+        return self.totalPending;
+    }
+
     function lp2TokenAmount(uint256 _liquidity) public view  returns (uint256 amount0, uint256 amount1) {
 
         uint256 _totalSupply = lpToken.totalSupply();
@@ -502,9 +431,6 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
 
         uint balance0 = IERC20(_token0).balanceOf(address(lpToken));
         uint balance1 = IERC20(_token1).balanceOf(address(lpToken));
-
-        //
-        //
 
         amount0 = _liquidity.mul(balance0) / _totalSupply; // using balances ensures pro-rata distribution
         amount1 = _liquidity.mul(balance1) / _totalSupply;
@@ -525,16 +451,7 @@ contract MatchPair is  IMatchPair, Ownable, MasterCaller{
         return _inputAmount > maxAmount ? maxAmount : _inputAmount ; 
     }
 
-    function getReserves() public view returns (uint112 _reserve0, uint112 _reserve1, uint32 _blockTimestampLast) {
-        return lpToken.getReserves();
-    }
-
-
     // todo to be remove
-    function userLPLength(uint256 _side, address _account) external view  returns(uint256){
-            QueuePoolInfo storage queueStake = _side == 0? queueStake0 : queueStake1;
-            return queueStake.userLP[_account].length;
-    }
 
     function userLPIndex(uint256 _side, address _account) external view returns(UserStake[] memory ) {
 

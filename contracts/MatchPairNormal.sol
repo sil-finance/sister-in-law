@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.6.12;
 
-import "./utils/QueueStableStakesFuns.sol";
-import "./MatchPairStorageStable.sol";
+import "./utils/QueueStakesFuns.sol";
+import "./MatchPairStorage.sol";
 import "./MatchPairDelegator.sol";
-contract MatchPairStable is MatchPairStorageStable, MatchPairDelegator {
-    using QueueStableStakesFuns for QueueStableStakes;
-
+contract MatchPairNormal is MatchPairStorage, MatchPairDelegator {
+    using QueueStakesFuns for QueueStakes;
     constructor(address _lpToken) public {
         lpToken =  IUniswapV2Pair(_lpToken);
         createQueue(true, 10e7);

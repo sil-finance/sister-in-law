@@ -10,7 +10,9 @@ import "./SilToken.sol";
 import "./interfaces/IMatchPair.sol";
 import './interfaces/IWETH.sol';
 import './interfaces/IMintRegulator.sol';
+import "./interfaces/IProxyRegistry.sol";
 import './TrustList.sol';
+import './PausePool.sol';
 
 
 
@@ -21,7 +23,7 @@ import './TrustList.sol';
 // distributed and the community can show to govern itself.
 //
 // Have fun reading it. Hopefully it's bug-free. God bless.
-contract SilMaster is Ownable , TrustList{
+contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
     using Address for address;
@@ -69,12 +71,7 @@ contract SilMaster is Ownable , TrustList{
     uint256 public bonus_multiplier;
     uint256 public maxAcceptMultiple = 3;
     uint256 public maxAcceptMultipleDenominator = 9;
- 
-    // Info of each pool.
-    PoolInfo[] public poolInfo;
-    // Info of each user that stakes LP(token0/token1) tokens.
-    mapping (uint256 => mapping (address => UserInfo)) public userInfo0;
-    mapping (uint256 => mapping (address => UserInfo)) public userInfo1;
+
     // Total allocation poitns. Must be the sum of all allocation points in all pools.
     uint256 public totalAllocPoint = 0;
     // The block number when SIL mining starts.
@@ -82,34 +79,34 @@ contract SilMaster is Ownable , TrustList{
     // Fee repurchase SIL and redistribution
     uint256 public periodFinish;
     uint256 public feeRewardRate;
-
     // Prevent the invasion of giant whales
     bool public whaleSpear;
-
+    // Info of each pool.
+    PoolInfo[] public poolInfo;
+    // Info of each user that stakes LP(token0/token1) tokens.
+    mapping (uint256 => mapping (address => UserInfo)) public userInfo0;
+    mapping (uint256 => mapping (address => UserInfo)) public userInfo1;
+    // MatchPair delegatecall implmention
+    mapping (uint256 => address) public matchPairRegistry;
+    mapping (uint256 => bool) public matchPairPause;
+    
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event SilPerBlockUpdated(address indexed user, uint256 _molecular, uint256 _denominator);
     event WithdrawSilToken(address indexed user, uint256 indexed pid, uint256 silAmount0, uint256 silAmount1);
+
     constructor(
             SilToken _sil,
             address _devaddr,
             address _ecosysaddr,
             address _repurchaseaddr,
-            // uint256 _silPerBlock,
-            // uint256 _startBlock,
-            // uint256 _bonusEndBlock,
             address _weth
         ) public {
         sil = _sil;
         devaddr = _devaddr;
         ecosysaddr = _ecosysaddr;
-        
         repurchaseaddr = _repurchaseaddr;
-        // silPerBlock = _silPerBlock;
-        // baseSilPerBlock = _silPerBlock;
-        // bonusEndBlock = _bonusEndBlock;
-        // startBlock = _startBlock;
         WETH = _weth;
     }
 
@@ -138,6 +135,10 @@ contract SilMaster is Ownable , TrustList{
     function setMintRegulator(address _regulator) public onlyOwner() {
         mintRegulator = _regulator;
     }
+
+    function matchPairRegister(uint256 _index, address _implementation) public onlyOwner() {
+        matchPairRegistry[_index] = _implementation;
+    }
     /**
      * @dev setting max accept multiple. must > 1
      * maxDepositAmount = pool.lp.tokenAmount * multiple - pool.pendingAmount
@@ -158,6 +159,21 @@ contract SilMaster is Ownable , TrustList{
         }
     
         emit SilPerBlockUpdated(msg.sender, _molecular, _denominator);
+    }
+    //Reserve shares for cross-chain
+    function reduceSil(uint256 _reduceAmount) public onlyOwner() {
+
+        baseSilPerBlock = baseSilPerBlock.sub(baseSilPerBlock.mul(_reduceAmount).div(sil.maxMint()));
+        sil.reduce(_reduceAmount);
+        //update Pool
+        massUpdatePools();
+        //update silPerBlock
+        if(mintRegulator != address(0)) {
+            updateSilPerBlock();
+        }else {
+            silPerBlock = baseSilPerBlock;
+        }
+
     }
 
     // Add a new lp to the pool. Can only be called by the owner.
@@ -218,9 +234,11 @@ contract SilMaster is Ownable , TrustList{
 
         uint256 accSilPerShare = _index == 0? pool.accSilPerShare0 : pool.accSilPerShare1;
         uint256 lpSupply = _index == 0? pool.totalDeposit0 : pool.totalDeposit1;
-        
+
+
         if (block.number > pool.lastRewardBlock && lpSupply != 0) {            
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
+            
             uint256 silReward = multiplier.mul(silPerBlock).mul(pool.allocPoint).div(totalAllocPoint);//
             uint256 totalMint = sil.balanceOf(address(this));
             if(sil.maxMint()< totalMint.add(silReward)) {
@@ -310,7 +328,7 @@ contract SilMaster is Ownable , TrustList{
     }
 
     // Deposit LP tokens to SilMaster.
-    function deposit(uint256 _pid, uint256 _index,  uint256 _amount) public  {
+    function deposit(uint256 _pid, uint256 _index,  uint256 _amount) whenNotPaused(_pid) public  {
         //check account (normalAccount || trustable)
         checkAccount(msg.sender);
         bool _index0 = _index == 0;
@@ -381,7 +399,7 @@ contract SilMaster is Ownable , TrustList{
         }
     }
     // Withdraw LP tokens from SilMaster.
-    function withdraw( uint256 _pid, uint256 _index, address _user, uint256 _amount) private {
+    function withdraw( uint256 _pid, uint256 _index, address _user, uint256 _amount) whenNotPaused(_pid)  private {
         
         bool _index0 = _index == 0;
         PoolInfo storage pool = poolInfo[_pid];
@@ -454,6 +472,26 @@ contract SilMaster is Ownable , TrustList{
         UserInfo storage user = _index == 0? userInfo0[_pid][_user] :  userInfo1[_pid][msg.sender];
         return user.amount;
     }
+
+
+    function getProxy(uint256 _index) external  view override returns(address) {
+        require(!matchPairPause[_index], "Proxy paused, waiting upgrade via governance");
+        return matchPairRegistry[_index];
+    }
+
+    /**
+     * @notice to protect fund of users, 
+     * allow developers to pause then upgrade via community governor
+     */
+    function pauseProxy(uint256 _pid, bool _paused) public {
+        require(msg.sender == devaddr, "dev sender required");
+        matchPairPause[_pid] = _paused;
+    }
+
+    function pause(uint256 _pid, bool _paused) public {
+        require(msg.sender == devaddr, "dev sender required");
+        pausePoolViaPid(_pid, _paused);
+    }
     // Update dev address by the previous dev.
     function dev(address _devaddr) public {
         require(msg.sender == devaddr, "dev: wut?");
@@ -465,7 +503,6 @@ contract SilMaster is Ownable , TrustList{
         ecosysaddr = _ecosysaddraddr;
     }
     
-
     function repurchase(address _repurchaseaddr) public {
         require(msg.sender == repurchaseaddr, "feeAddr: wut?");
         repurchaseaddr = _repurchaseaddr;
