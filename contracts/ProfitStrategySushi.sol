@@ -66,6 +66,7 @@ contract ProfitStrategySushi is Ownable, IProfitStrategy {
     function withdraw(uint256 _amount) public override onlyOwner() {
 
         if(address(stakeRewards) != address(0) && _amount > 0) {
+
             stakeRewards.withdraw(pid, _amount);
             TransferHelper.safeTransfer(stakeLpPair, address(stakeGatling),_amount);
         }

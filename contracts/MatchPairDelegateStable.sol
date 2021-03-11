@@ -40,7 +40,7 @@ contract MatchPairDelegateStable is MatchPairStorageStable,  IMatchPair, Ownable
         (uint256 pendingA, uint256 pendingB) = ( queueStake0.totalPending, queueStake1.totalPending);
 
         //todo setting min pairableAmount
-        if( pendingA > minToken0 && pendingB > minToken1 ) {
+        if( pendingA > minMintToken0 && pendingB > minMintToken1 ) {
              pairRound = pairRound + 1;
 
             (uint amountA, uint amountB) = getPairAmount( lpToken.token0(), lpToken.token1(), pendingA, pendingB ); 
@@ -545,8 +545,8 @@ contract MatchPairDelegateStable is MatchPairStorageStable,  IMatchPair, Ownable
     }
 
     function getAmountIn( uint amountOut, uint reserveIn, uint reserveOut) internal pure returns (uint amountIn) {
-        require(amountOut > 0, 'UniswapV2Library: INSUFFICIENT_OUTPUT_AMOUNT');
-        require(reserveIn > 0 && reserveOut > 0, 'UniswapV2Library: INSUFFICIENT_LIQUIDITY');
+        require(amountOut > 0, 'SwapV2Library: INSUFFICIENT_OUTPUT_AMOUNT');
+        require(reserveIn > 0 && reserveOut > 0, 'SwapV2Library: INSUFFICIENT_LIQUIDITY');
         uint numerator = reserveIn.mul(amountOut).mul(1000);
         uint denominator = reserveOut.sub(amountOut).mul(997);
         amountIn = (numerator / denominator).add(1);

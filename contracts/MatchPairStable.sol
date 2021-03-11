@@ -31,6 +31,11 @@ contract MatchPairStable is MatchPairStorageStable, MatchPairDelegator {
         stakeGatling = IStakeGatling(_gatlinAddress);
     }
 
+    function setMintLimit(uint256 _minMintToken0, uint256 _minMintToken1) public onlyOwner() {
+        minMintToken0 = _minMintToken0;
+        minMintToken1 = _minMintToken1;
+    }
+
     function implementation() public view override returns (address) {
         return IProxyRegistry(masterCaller()).getProxy(PROXY_INDEX);
     }

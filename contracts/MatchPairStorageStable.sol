@@ -11,8 +11,8 @@ contract MatchPairStorageStable {
    uint256 public constant PROXY_INDEX = 1;
     // round index of pair order
     uint256 public pairRound;
-    uint256 public minToken0;
-    uint256 public minToken1;
+    uint256 public minMintToken0;
+    uint256 public minMintToken1;
     uint256 safeProtect = 50;
 
     struct QueuePoolInfo {

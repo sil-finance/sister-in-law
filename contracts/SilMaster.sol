@@ -135,7 +135,9 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     function setMintRegulator(address _regulator) public onlyOwner() {
         mintRegulator = _regulator;
     }
-
+    /**
+     * @notice register delegate implementation
+     */
     function matchPairRegister(uint256 _index, address _implementation) public onlyOwner() {
         matchPairRegistry[_index] = _implementation;
     }
@@ -499,12 +501,12 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     }
 
     function ecosys(address _ecosysaddraddr) public {
-        require(msg.sender == ecosysaddr, "decosysaddrev: wut?");
+        require(msg.sender == ecosysaddr, "ecosys: wut?");
         ecosysaddr = _ecosysaddraddr;
     }
     
     function repurchase(address _repurchaseaddr) public {
-        require(msg.sender == repurchaseaddr, "feeAddr: wut?");
+        require(msg.sender == repurchaseaddr, "repurchase: wut?");
         repurchaseaddr = _repurchaseaddr;
     }
 
