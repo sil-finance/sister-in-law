@@ -33,9 +33,21 @@ contract PriceSafeChecker is IPriceSafeChecker, Ownable {
 
         (uint256 reserveDirect, uint256 reserveBased) =  token1Direct? (_reserve0, _reserve1):( _reserve1, _reserve0);
 
+
+
+
         // currentPrice
         uint256 currentPrice = reserveDirect.div(reserveBased);
         // uint256 trustedPrice = getLatestPrice();
+
+
+
+
+
+
+
+
+
         require(currentPrice.mul(maxPriceDenominator) <= trustedPrice.mul(maxPriceNumerator), "Hight risk: Overpriced!");
         require(trustedPrice.mul(minPriceNumerator) <= currentPrice.mul(minPriceDenominator), "Hight risk: Price is too low!");
     }

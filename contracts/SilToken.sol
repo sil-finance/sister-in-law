@@ -9,7 +9,7 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 contract SilToken is ERC20, Ownable {
     uint256 public maxMint;
     bool public mintOver;
-    constructor ( uint256 _maxMint ) ERC20("SIL Token", "SIL") public  {
+    constructor ( uint256 _maxMint ) ERC20("SIL Finance Token", "SIL") public  {
         maxMint = _maxMint;
     }
 

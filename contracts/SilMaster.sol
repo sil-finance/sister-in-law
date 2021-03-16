@@ -32,6 +32,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     struct UserInfo {
         uint256 amount;     // How many LP tokens the user has provided.
         uint256 rewardDebt; // Reward debt. See explanation below.
+        uint256 buff;       // if not `0`,1000-based, allow NFT Manager adjust the value of buff 
 
         uint256 totalDeposit;
         uint256 totalWithdraw;
@@ -57,8 +58,11 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     address public devaddr;
     // 10% is the community reserve, which is used by voting through governance contracts
     address public ecosysaddr;
-    // 
+    // 0.5% fee will be collect , then repurchase Sil and distribute to depositor
     address public repurchaseaddr;
+    // NFT will be published in future, for a interesting mining mode  
+    address public nftProphet;
+
     address public WETH;
     //IMintRegulator 
     address public mintRegulator;
@@ -92,7 +96,6 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     
     event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
     event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
-    event EmergencyWithdraw(address indexed user, uint256 indexed pid, uint256 amount);
     event SilPerBlockUpdated(address indexed user, uint256 _molecular, uint256 _denominator);
     event WithdrawSilToken(address indexed user, uint256 indexed pid, uint256 silAmount0, uint256 silAmount1);
 
@@ -149,6 +152,10 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         maxAcceptMultiple = _maxAcceptMultiple;
         maxAcceptMultipleDenominator = _maxAcceptMultipleDenominator;
     } 
+    
+    function setNFTProphet(address _nftProphet) public onlyOwner()  {
+        nftProphet = _nftProphet;
+    }
     
     function updateSilPerBlock() public {
         require(mintRegulator != address(0), "IMintRegulator not setting");
@@ -249,7 +256,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
             silReward = getFeeRewardAmount(pool.allocPoint, pool.lastRewardBlock).add(silReward);
             accSilPerShare = accSilPerShare.add(silReward.mul(1e12).div(lpSupply).div(2));
         } 
-        return user.amount.mul(accSilPerShare).div(1e12).sub(user.rewardDebt);
+        return  amountBuffed(user.amount, user.buff).mul(accSilPerShare).div(1e12).sub(user.rewardDebt);
     }
 
     // Update reward variables for all pools. Be careful of gas spending!
@@ -312,6 +319,51 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         }
     }
 
+    function batchGrantBuff(uint256[] calldata _pid, uint256[] calldata _index, uint256[] calldata _value, address[] calldata _user) public {
+        require(msg.sender == nftProphet, "Grant buff: Prophet allowed");
+        require(_pid.length > 0 , "_pid.length is zore");
+        require(_pid.length ==  _index.length ,   "Require length equal: pid, index");
+        require(_index.length ==  _value.length , "Require length equal: index, _value");
+        require(_value.length ==  _user.length ,  "Require length equal: _value, _user");
+        
+        uint256 length = _pid.length;
+
+        for (uint256 i = 0; i < length; i++) {
+           grantBuff(_pid[i], _index[i], _value[i], _user[i]);
+        }
+    }
+
+    function grantBuff(uint256 _pid, uint256 _index, uint256 _value, address _user) public {
+        require(msg.sender == nftProphet, "Grant buff: Prophet allowed");
+
+        UserInfo storage user = _index == 0  ? userInfo0[_pid][_user] : userInfo1[_pid][_user];
+        // if user.amount == 0, just set `buff` value
+        if (user.amount > 0 && !sil.mintOver()) {
+            updatePool(_pid);
+
+            PoolInfo storage pool = poolInfo[_pid];
+            uint256 accPreShare;
+            if(_index == 0) {
+               accPreShare = pool.accSilPerShare0;
+               pool.totalDeposit0 = pool.totalDeposit0
+                                    .sub(amountBuffed(user.amount, user.buff))
+                                    .add(amountBuffed(user.amount, _value));
+            }else {
+               accPreShare = pool.accSilPerShare1;
+               pool.totalDeposit1 = pool.totalDeposit1
+                                    .sub(amountBuffed(user.amount, user.buff))
+                                    .add(amountBuffed(user.amount, _value));
+            }
+
+            uint256 pending = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12).sub(user.rewardDebt);
+            if(pending > 0) {
+                safeSilTransfer(_user, pending);
+            }
+            user.rewardDebt = amountBuffed(user.amount, _value).mul(accPreShare).div(1e12);
+        }
+        user.buff = _value;
+    }
+
     function depositEth(uint256 _pid, uint256 _index ) public payable { 
         uint256 _amount = msg.value;
         uint256 acceptAmount;
@@ -347,7 +399,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         uint256 accPreShare = _index0 ? pool.accSilPerShare0 : pool.accSilPerShare1;
        
         if (user.amount > 0 && !sil.mintOver()) {
-            uint256 pending = user.amount.mul(accPreShare).div(1e12).sub(user.rewardDebt);
+            uint256 pending = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12).sub(user.rewardDebt);
             if(pending > 0) {
                 safeSilTransfer(msg.sender, pending);
             }
@@ -365,14 +417,14 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
             user.amount = user.amount.add(_amount);
             user.totalDeposit = user.totalDeposit.add(_amount); 
             if(_index0) {
-                pool.totalDeposit0 = pool.totalDeposit0.add(_amount);
+                pool.totalDeposit0 = pool.totalDeposit0.add(amountBuffed(_amount, user.buff));
             }else {
-                pool.totalDeposit1 = pool.totalDeposit1.add(_amount);
+                pool.totalDeposit1 = pool.totalDeposit1.add(amountBuffed(_amount, user.buff));
             }
         }
 
 
-        user.rewardDebt = user.amount.mul(accPreShare).div(1e12);
+        user.rewardDebt = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12);
         emit Deposit(msg.sender, _pid, _amount);
     }
 
@@ -414,7 +466,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         updatePool(_pid);
 
         uint256 accPreShare = _index0 ? pool.accSilPerShare0 : pool.accSilPerShare1;
-        uint256 pending = user.amount.mul(accPreShare).div(1e12).sub(user.rewardDebt);
+        uint256 pending = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12).sub(user.rewardDebt);
         if(pending > 0) {
             safeSilTransfer(_user, pending);
         }
@@ -422,12 +474,12 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         if(_amount > 0) {
             user.amount = user.amount.sub(_amount);
             if(_index0) {
-                pool.totalDeposit0 = pool.totalDeposit0.sub(_amount);
+                pool.totalDeposit0 = pool.totalDeposit0.sub(amountBuffed(_amount, user.buff));
             }else {
-                pool.totalDeposit1 = pool.totalDeposit1.sub(_amount);
+                pool.totalDeposit1 = pool.totalDeposit1.sub(amountBuffed(_amount, user.buff));
             }
         }
-        user.rewardDebt = user.amount.mul(accPreShare).div(1e12);
+        user.rewardDebt = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12);
         emit Withdraw(_user, _pid, _amount);
     }
     /**
@@ -454,9 +506,9 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         uint256 accPreShare = _index0 ? pool.accSilPerShare0 : pool.accSilPerShare1;
 
         if (user.amount > 0) {
-            silAmount = user.amount.mul(accPreShare).div(1e12).sub(user.rewardDebt);
+            silAmount = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12).sub(user.rewardDebt);
         }
-        user.rewardDebt = user.amount.mul(accPreShare).div(1e12);
+        user.rewardDebt = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12);
     }
 
     // Safe sil transfer function, just in case if rounding error causes pool to not have enough SILs.
@@ -466,6 +518,14 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
             sil.transfer(_to, silBal);
         } else {
             sil.transfer(_to, _amount);
+        }
+    }
+
+    function amountBuffed(uint256 amount, uint256 buff) private pure returns (uint256) {
+        if(buff == 0) {
+            return amount;
+        }else {
+            return amount.mul(buff).div(1000);
         }
     }
 
