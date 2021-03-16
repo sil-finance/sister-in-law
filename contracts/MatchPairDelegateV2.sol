@@ -9,7 +9,6 @@ import "./uniswapv2/interfaces/IUniswapV2Pair.sol";
 import './uniswapv2/libraries/UniswapV2Library.sol';
 import './uniswapv2/libraries/TransferHelper.sol';
 
-import "./utils/QueueStakesFuns.sol";
 import "./utils/MasterCaller.sol";
 import "./interfaces/IStakeGatling.sol";
 import "./interfaces/IMatchPair.sol";
@@ -22,7 +21,6 @@ import "./MatchPairStorageV2.sol";
 // Logic layer implementation of MatchPair
 contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterCaller{
     using SafeERC20 for IERC20;
-    using QueueStakesFuns for QueueStakes;
     using SafeMath for uint256; 
     
     constructor() public {

@@ -3,7 +3,6 @@ pragma solidity 0.6.12;
 
 import "./uniswapv2/interfaces/IUniswapV2Pair.sol";
 
-import "./utils/QueueStakesFuns.sol";
 import "./interfaces/IStakeGatling.sol";
 import "./interfaces/IMatchPair.sol";
 import "./interfaces/IPriceSafeChecker.sol";
