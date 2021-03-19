@@ -113,7 +113,7 @@ contract StakeGatlingDelegate is GatlingStorage, Ownable, IStakeGatling, MasterC
         }
         
     }
-    function burn(address _to, uint256 _amount) external override returns (uint256 amount0, uint256 amount1) {
+    function burn(address _to, uint256 _amount) external  override onlyMasterCaller() returns (uint256 amount0, uint256 amount1) {
         if(profitStrategy != address(0)) {
             updateRate();
             if(_amount > totalAmount) {

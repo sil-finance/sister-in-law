@@ -9,6 +9,7 @@ import "./uniswapv2/interfaces/IUniswapV2Pair.sol";
 import './uniswapv2/libraries/UniswapV2Library.sol';
 import './uniswapv2/libraries/TransferHelper.sol';
 
+import "./utils/QueueStakesFuns.sol";
 import "./utils/MasterCaller.sol";
 import "./interfaces/IStakeGatling.sol";
 import "./interfaces/IMatchPair.sol";
@@ -21,9 +22,14 @@ import "./MatchPairStorageV2.sol";
 // Logic layer implementation of MatchPair
 contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterCaller{
     using SafeERC20 for IERC20;
+    using QueueStakesFuns for QueueStakes;
     using SafeMath for uint256; 
-    
+
     constructor() public {
+    }
+
+    function delegateVersion() public view returns (uint256) {
+        return 1;
     }
 
     /**
@@ -42,7 +48,7 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
 
         uint256 userPoint;
         {
-            if(totalPoint == 0 || pendingAmount == 0) {
+            if(totalPoint == 0 || lpTokenAmount.add(pendingAmount) == 0) {
                 userPoint = _amount;
             }else {
                 userPoint = _amount.mul(totalPoint).div(lpTokenAmount.add(pendingAmount));
@@ -191,6 +197,7 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
         UserInfo storage userInfo = _index == 0? userInfo0[_user] : userInfo1[_user];
         userInfo.tokenPoint = userInfo.tokenPoint.sub(_amount);
         if(_index == 0) {
+
             totalTokenPoint0 = totalTokenPoint0.sub(_amount);
         }else {
             totalTokenPoint1 = totalTokenPoint1.sub(_amount);
@@ -279,15 +286,5 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
         
         return _inputAmount > maxAmount ? maxAmount : _inputAmount ; 
     }
-
-    // function migrate() public {
-    //     require( stakeGatling.profitStrategy() == address(0), "StakeGatlingHub must null");
-    
-    //     (address token0, address token1) = (lpToken.token0(), lpToken.token1());
-    //     address newPair = factory.getPair(token0, token1);
-
-    //     stakeGatling.burn(address(this))
-    
-    // }
 
 }
