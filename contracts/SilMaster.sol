@@ -94,8 +94,8 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     mapping (uint256 => address) public matchPairRegistry;
     mapping (uint256 => bool) public matchPairPause;
     
-    event Deposit(address indexed user, uint256 indexed pid, uint256 amount);
-    event Withdraw(address indexed user, uint256 indexed pid, uint256 amount);
+    event Deposit(address indexed user, uint256 indexed pid, uint256 indexed index, uint256 amount);
+    event Withdraw(address indexed user, uint256 indexed pid, uint256 indexed index, uint256 amount);
     event SilPerBlockUpdated(address indexed user, uint256 _molecular, uint256 _denominator);
     event WithdrawSilToken(address indexed user, uint256 indexed pid, uint256 silAmount0, uint256 silAmount1);
 
@@ -425,7 +425,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
 
 
         user.rewardDebt = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12);
-        emit Deposit(msg.sender, _pid, _amount);
+        emit Deposit(msg.sender, _pid, _index, _amount);
     }
 
     function withdrawToken(uint256 _pid, uint256 _index, uint256 _amount) public { 
@@ -433,18 +433,14 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         PoolInfo storage pool = poolInfo[_pid];
 
         //withdrawToken from MatchPair
-
-        uint256 untakeTokenAmount = pool.matchPair.untakeToken(_index, _user, _amount);
+        (uint256 untakeTokenAmount, uint256 leftAmount) = pool.matchPair.untakeToken(_index, _user, _amount);
         address targetToken = pool.matchPair.token(_index);
-
 
         uint256 userAmount = untakeTokenAmount.mul(995).div(1000);
 
-        withdraw(_pid, _index, _user, untakeTokenAmount);
+        withdraw(_pid, _index, _user, untakeTokenAmount, leftAmount);
         if(targetToken == WETH) {
-
             IWETH(WETH).withdraw(untakeTokenAmount);
-
             safeTransferETH(_user, userAmount);
             safeTransferETH(repurchaseaddr, untakeTokenAmount.sub(userAmount) );
         }else {
@@ -453,16 +449,14 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         }
     }
     // Withdraw LP tokens from SilMaster.
-    function withdraw( uint256 _pid, uint256 _index, address _user, uint256 _amount) whenNotPaused(_pid)  private {
+    function withdraw( uint256 _pid, uint256 _index, address _user, uint256 _amount, uint256 _leftAmount) whenNotPaused(_pid)  private {
         
         bool _index0 = _index == 0;
         PoolInfo storage pool = poolInfo[_pid];
         UserInfo storage user = _index0? userInfo0[_pid][_user] :  userInfo1[_pid][_user];
         //record withdraw origin Amount
         user.totalWithdraw = user.totalWithdraw.add(_amount);
-        if(user.amount < _amount) {
-            _amount = user.amount;
-        }
+
         updatePool(_pid);
 
         uint256 accPreShare = _index0 ? pool.accSilPerShare0 : pool.accSilPerShare1;
@@ -470,17 +464,18 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         if(pending > 0) {
             safeSilTransfer(_user, pending);
         }
-
-        if(_amount > 0) {
-            user.amount = user.amount.sub(_amount);
-            if(_index0) {
-                pool.totalDeposit0 = pool.totalDeposit0.sub(amountBuffed(_amount, user.buff));
-            }else {
-                pool.totalDeposit1 = pool.totalDeposit1.sub(amountBuffed(_amount, user.buff));
-            }
+        if(_index0) {
+            pool.totalDeposit0 = pool.totalDeposit0
+                                .add(amountBuffed(_leftAmount, user.buff))
+                                .sub(amountBuffed(user.amount, user.buff));
+        }else {
+            pool.totalDeposit1 = pool.totalDeposit1
+                                .add(amountBuffed(_leftAmount, user.buff))
+                                .sub(amountBuffed(user.amount, user.buff));
         }
+        user.amount = _leftAmount;
         user.rewardDebt = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12);
-        emit Withdraw(_user, _pid, _amount);
+        emit Withdraw(_user, _pid, _index, _amount);
     }
     /**
      * @dev withdraw SILToken mint by deposit token0 & token1

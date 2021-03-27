@@ -84,7 +84,7 @@ contract MatchPairDelegateStable is MatchPairStorageStable,  IMatchPair, Ownable
         public
         override
         onlyMasterCaller()
-        returns (uint256 _tokenAmount) 
+        returns (uint256 _tokenAmount, uint256 _leftAmount) 
     {
 
         bool index0 = _index == 0;

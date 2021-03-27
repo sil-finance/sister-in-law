@@ -15,7 +15,6 @@ import "./interfaces/IStakeGatling.sol";
 import "./interfaces/IMatchPair.sol";
 import "./interfaces/IPriceSafeChecker.sol";
 import "./interfaces/IProxyRegistry.sol";
-import "./MatchPairStorage.sol";
 import "./DelegateCaller.sol";
 
 
@@ -39,13 +38,13 @@ abstract contract MatchPairDelegator is  DelegateCaller, IMatchPair, Ownable, Ma
         public
         override
         onlyMasterCaller()
-        returns (uint256 _tokenAmount) 
+        returns (uint256 _tokenAmount, uint256 _leftAmount) 
     {
         bytes memory data = delegateToImplementation(
             abi.encodeWithSignature("untakeToken(uint256,address,uint256)",
               _index, _user, _amount
              ));
-        return abi.decode(data, (uint256));
+        return abi.decode(data, (uint256, uint256));
     }
     function queueTokenAmount(uint256 _index) public view override  returns (uint256) {
         bytes memory data = delegateToViewImplementation(

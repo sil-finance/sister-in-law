@@ -3,7 +3,7 @@ pragma solidity 0.6.12;
 interface IMatchPair {
     
     function stake(uint256 _index, address _user,uint256 _amount) external;  // owner
-    function untakeToken(uint256 _index, address _user,uint256 _amount) external returns (uint256 _tokenAmount);// owner
+    function untakeToken(uint256 _index, address _user,uint256 _amount) external returns (uint256 _tokenAmount, uint256 _leftAmount);// owner
     // function untakeLP(uint256 _index, address _user,uint256 _amount) external returns (uint256);// owner
 
     function token(uint256 _index) external view  returns (address);

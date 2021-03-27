@@ -9,7 +9,6 @@ import "./uniswapv2/interfaces/IUniswapV2Pair.sol";
 import './uniswapv2/libraries/UniswapV2Library.sol';
 import './uniswapv2/libraries/TransferHelper.sol';
 
-import "./utils/QueueStakesFuns.sol";
 import "./utils/MasterCaller.sol";
 import "./interfaces/IStakeGatling.sol";
 import "./interfaces/IMatchPair.sol";
@@ -22,7 +21,6 @@ import "./MatchPairStorageV2.sol";
 // Logic layer implementation of MatchPair
 contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterCaller{
     using SafeERC20 for IERC20;
-    using QueueStakesFuns for QueueStakes;
     using SafeMath for uint256; 
 
     constructor() public {
@@ -104,7 +102,7 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
     function untakeToken(uint256 _index, address _user,uint256 _amount) 
         public
         override
-        returns (uint256 _withdrawAmount) 
+        returns (uint256 _withdrawAmount, uint256 _leftAmount) 
     {
         _updateLpProfit();
         address tokenCurrent = _index == 0 ? lpToken.token0() : lpToken.token1();
@@ -139,8 +137,10 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
         uint256 pointAmount = _withdrawAmount.mul(totalPoint).div(totalTokenAmoun);
         _subTotalPoint(_index, _user, pointAmount);
 
+        _leftAmount = userAmount.sub(_withdrawAmount);
         // transfer to Master
         TransferHelper.safeTransfer(tokenCurrent, masterCaller(), _withdrawAmount);
+        
     }
 
     /**
