@@ -16,7 +16,7 @@ import "../interfaces/IPriceSafeChecker.sol";
 import "../MatchPairStorageV2.sol";
 
 // Logic layer implementation of MatchPairStableV2
-contract MatchPairStableV2 is  IMatchPair, Ownable, MasterCaller{
+contract MatchPairStableDelegateV2 is  IMatchPair, Ownable, MasterCaller{
     using SafeERC20 for IERC20;
     using SafeMath for uint256; 
     
