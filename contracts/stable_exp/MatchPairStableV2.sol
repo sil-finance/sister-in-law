@@ -77,7 +77,7 @@ contract MatchPairStableV2 is  IMatchPair, Ownable, MasterCaller{
 
         uint256 userPoint;
         {
-            if(totalPoint == 0 || pendingAmount == 0) {
+            if(totalPoint == 0 || lpTokenAmount.add(pendingAmount) == 0) {
                 userPoint = _amount;
             }else {
                 userPoint = _amount.mul(totalPoint).div(lpTokenAmount.add(pendingAmount));
