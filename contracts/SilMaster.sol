@@ -118,7 +118,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         uint256 _startBlock,
         uint256 _bonusEndBlock,
         uint256 _bonus_multiplier)
-        public
+        external
         onlyOwner()
     {
         require(startBlock == 0, "Init only once" );
@@ -135,25 +135,25 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     /**
      * @dev adjust mint number by regulater.getScale()
      */
-    function setMintRegulator(address _regulator) public onlyOwner() {
+    function setMintRegulator(address _regulator) external onlyOwner() {
         mintRegulator = _regulator;
     }
     /**
      * @notice register delegate implementation
      */
-    function matchPairRegister(uint256 _index, address _implementation) public onlyOwner() {
+    function matchPairRegister(uint256 _index, address _implementation) external onlyOwner() {
         matchPairRegistry[_index] = _implementation;
     }
     /**
      * @dev setting max accept multiple. must > 1
      * maxDepositAmount = pool.lp.tokenAmount * multiple - pool.pendingAmount
      */
-    function setMintRegulator(uint _maxAcceptMultiple, uint _maxAcceptMultipleDenominator) public onlyOwner() {
+    function setWhaleSpearRange(uint _maxAcceptMultiple, uint _maxAcceptMultipleDenominator) external onlyOwner() {
         maxAcceptMultiple = _maxAcceptMultiple;
         maxAcceptMultipleDenominator = _maxAcceptMultipleDenominator;
     } 
     
-    function setNFTProphet(address _nftProphet) public onlyOwner()  {
+    function setNFTProphet(address _nftProphet) external onlyOwner()  {
         nftProphet = _nftProphet;
     }
     
@@ -170,7 +170,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         emit SilPerBlockUpdated(msg.sender, _molecular, _denominator);
     }
     //Reserve shares for cross-chain
-    function reduceSil(uint256 _reduceAmount) public onlyOwner() {
+    function reduceSil(uint256 _reduceAmount) external onlyOwner() {
 
         baseSilPerBlock = baseSilPerBlock.sub(baseSilPerBlock.mul(_reduceAmount).div(sil.maxMint()));
         sil.reduce(_reduceAmount);
@@ -187,7 +187,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
 
     // Add a new lp to the pool. Can only be called by the owner.
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
-    function add(uint256 _allocPoint, IMatchPair _matchPair) public onlyOwner {
+    function add(uint256 _allocPoint, IMatchPair _matchPair) external onlyOwner {
 
         // if (_withUpdate) {
         massUpdatePools();
@@ -205,11 +205,11 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
             }));
     }
     //@notice Prevent unilateral mining of large amounts of funds
-    function holdWhaleSpear(bool _hold) public onlyOwner {
+    function holdWhaleSpear(bool _hold) external onlyOwner {
         whaleSpear = _hold;
     }
     //@notice Update the given pool's SIL allocation point. Can only be called by the owner.
-    function set(uint256 _pid, uint256 _allocPoint) public onlyOwner {
+    function set(uint256 _pid, uint256 _allocPoint) external onlyOwner {
 
         massUpdatePools();
         
@@ -274,10 +274,10 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         if (block.number <= pool.lastRewardBlock) {
             return;
         }
-        uint256 lpSupply0 = pool.totalDeposit0;
-        uint256 lpSupply1 = pool.totalDeposit1;
+        uint256 totalDeposit0 = pool.totalDeposit0;
+        uint256 totalDeposit1 = pool.totalDeposit1;
 
-        if(lpSupply0.add(lpSupply1) > 0 ) {
+        if(totalDeposit0.add(totalDeposit1) > 0 ) {
             uint256 silReward;
             if(!sil.mintOver()) {
                 uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
@@ -286,14 +286,14 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
             //add fee Reward if exist
             silReward = getFeeRewardAmount(pool.allocPoint, pool.lastRewardBlock).add(silReward);
             // token0 side
-            if(lpSupply0 > 0) {
-                pool.accSilPerShare0 = pool.accSilPerShare0.add(silReward.mul(1e12).div(lpSupply0).div(2));
+            if(totalDeposit0 > 0) {
+                pool.accSilPerShare0 = pool.accSilPerShare0.add(silReward.mul(1e12).div(totalDeposit0).div(2));
             }
             // token1 side
-            if(lpSupply1 > 0) {
-                pool.accSilPerShare1 = pool.accSilPerShare1.add(silReward.mul(1e12).div(pool.totalDeposit1).div(2));
+            if(totalDeposit1 > 0) {
+                pool.accSilPerShare1 = pool.accSilPerShare1.add(silReward.mul(1e12).div(totalDeposit1).div(2));
             }
-            if(lpSupply0 ==0 || lpSupply1==0) {
+            if(totalDeposit0 ==0 || totalDeposit1==0) {
                 silReward = silReward.div(2);
             }
 
@@ -364,15 +364,16 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         user.buff = _value;
     }
 
-    function depositEth(uint256 _pid, uint256 _index ) public payable { 
+    function depositEth(uint256 _pid, uint256 _index ) external payable {
         uint256 _amount = msg.value;
         uint256 acceptAmount;
+        PoolInfo storage pool = poolInfo[_pid];
         if(whaleSpear) {
-            PoolInfo storage pool = poolInfo[_pid];
             acceptAmount = pool.matchPair.maxAcceptAmount(_index, maxAcceptMultiple, maxAcceptMultipleDenominator, _amount);
         }else {
             acceptAmount = _amount;
         }
+        require(pool.matchPair.token(_index) == WETH, "DepositEth: Index incorrect");
         IWETH(WETH).deposit{value: acceptAmount}();
         deposit(_pid, _index, acceptAmount);
         //chargeback
@@ -428,19 +429,23 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         emit Deposit(msg.sender, _pid, _index, _amount);
     }
 
-    function withdrawToken(uint256 _pid, uint256 _index, uint256 _amount) public { 
+    function withdrawToken(uint256 _pid, uint256 _index, uint256 _amount) external {
         address _user = msg.sender;
         PoolInfo storage pool = poolInfo[_pid];
 
         //withdrawToken from MatchPair
+
         (uint256 untakeTokenAmount, uint256 leftAmount) = pool.matchPair.untakeToken(_index, _user, _amount);
         address targetToken = pool.matchPair.token(_index);
+
 
         uint256 userAmount = untakeTokenAmount.mul(995).div(1000);
 
         withdraw(_pid, _index, _user, untakeTokenAmount, leftAmount);
         if(targetToken == WETH) {
+
             IWETH(WETH).withdraw(untakeTokenAmount);
+
             safeTransferETH(_user, userAmount);
             safeTransferETH(repurchaseaddr, untakeTokenAmount.sub(userAmount) );
         }else {
@@ -464,14 +469,16 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         if(pending > 0) {
             safeSilTransfer(_user, pending);
         }
+
+        uint256 _totalDeposit = _index0 ? pool.totalDeposit0 : pool.totalDeposit1;
+        // _leftAmount may bigger than _amount
+        _totalDeposit = _totalDeposit
+            .add(amountBuffed(_leftAmount, user.buff))
+            .sub(amountBuffed(_amount, user.buff));
         if(_index0) {
-            pool.totalDeposit0 = pool.totalDeposit0
-                                .add(amountBuffed(_leftAmount, user.buff))
-                                .sub(amountBuffed(user.amount, user.buff));
+            pool.totalDeposit0 = _totalDeposit;
         }else {
-            pool.totalDeposit1 = pool.totalDeposit1
-                                .add(amountBuffed(_leftAmount, user.buff))
-                                .sub(amountBuffed(user.amount, user.buff));
+            pool.totalDeposit1 = _totalDeposit;
         }
         user.amount = _leftAmount;
         user.rewardDebt = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12);
@@ -480,7 +487,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     /**
      * @dev withdraw SILToken mint by deposit token0 & token1
      */
-    function withdrawSil(uint256 _pid) public {
+    function withdrawSil(uint256 _pid) external {
 
         updatePool(_pid);
 
@@ -510,9 +517,11 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     function safeSilTransfer(address _to, uint256 _amount) internal {
         uint256 silBal = sil.balanceOf(address(this));
         if (_amount > silBal) {
-            sil.transfer(_to, silBal);
+            require(sil.transfer(_to, silBal),'SafeSilTransfer: transfer failed');
+            // sil.transfer(_to, silBal);
         } else {
-            sil.transfer(_to, _amount);
+            require(sil.transfer(_to, _amount),'SafeSilTransfer: transfer failed');
+            // sil.transfer(_to, _amount);
         }
     }
 
@@ -540,27 +549,27 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
      * @notice to protect fund of users, 
      * allow developers to pause then upgrade via community governor
      */
-    function pauseProxy(uint256 _pid, bool _paused) public {
+    function pauseProxy(uint256 _pid, bool _paused) external {
         require(msg.sender == devaddr, "dev sender required");
         matchPairPause[_pid] = _paused;
     }
 
-    function pause(uint256 _pid, bool _paused) public {
+    function pause(uint256 _pid, bool _paused) external {
         require(msg.sender == devaddr, "dev sender required");
         pausePoolViaPid(_pid, _paused);
     }
     // Update dev address by the previous dev.
-    function dev(address _devaddr) public {
+    function dev(address _devaddr) external {
         require(msg.sender == devaddr, "dev: wut?");
         devaddr = _devaddr;
     }
 
-    function ecosys(address _ecosysaddraddr) public {
+    function ecosys(address _ecosysaddraddr) external {
         require(msg.sender == ecosysaddr, "ecosys: wut?");
         ecosysaddr = _ecosysaddraddr;
     }
     
-    function repurchase(address _repurchaseaddr) public {
+    function repurchase(address _repurchaseaddr) external {
         require(msg.sender == repurchaseaddr, "repurchase: wut?");
         repurchaseaddr = _repurchaseaddr;
     }

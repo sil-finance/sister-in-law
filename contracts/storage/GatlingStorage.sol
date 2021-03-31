@@ -33,4 +33,7 @@ contract GatlingStorage {
     mapping(uint256 => uint256) public reprofitCount;
 
     event ProfitStrategyEvent(address _profitStrategy);
+    event UpdatesRuleEvent(uint256 _updatesPerDay, uint256  _updatesMin);
+    event SetRouter(address _router);
+    event ExecUpdateProfitEvent(address indexed _origin, uint256 _at);
 }

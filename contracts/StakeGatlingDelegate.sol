@@ -29,11 +29,13 @@ contract StakeGatlingDelegate is GatlingStorage, Ownable, IStakeGatling, MasterC
     function setUpdatesRule(uint256 _updatesPerDay, uint256  _updatesMin) public onlyOwner() {
         updatesPerDay = _updatesPerDay;
         updatesMin = _updatesMin;
+        emit UpdatesRuleEvent(_updatesPerDay, _updatesMin);
     }
 
     function setRouter(address _v2Router ) public onlyOwner() {
         if(v2Router != _v2Router) {
             v2Router = _v2Router;
+            emit SetRouter(_v2Router);
         }
     }
 
@@ -166,6 +168,7 @@ contract StakeGatlingDelegate is GatlingStorage, Ownable, IStakeGatling, MasterC
         reprofitCountTotal = reprofitCountTotal +1;
         
         profitRateUpdateTime = now;
+        emit ExecUpdateProfitEvent(tx.origin, now);
     }
 
     function currentProfitRate() public view returns (uint256, uint256) {

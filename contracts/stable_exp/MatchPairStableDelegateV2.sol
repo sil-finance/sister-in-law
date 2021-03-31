@@ -13,50 +13,17 @@ import "../utils/MasterCaller.sol";
 import "../interfaces/IStakeGatling.sol";
 import "../interfaces/IMatchPair.sol";
 import "../interfaces/IPriceSafeChecker.sol";
-import "../MatchPairStorageV2.sol";
+import "../storage/MatchPairStorageStableV2.sol";
 
 // Logic layer implementation of MatchPairStableV2
-contract MatchPairStableDelegateV2 is  IMatchPair, Ownable, MasterCaller{
+contract MatchPairStableDelegateV2 is MatchPairStorageStableV2,  IMatchPair, Ownable, MasterCaller{
     using SafeERC20 for IERC20;
-    using SafeMath for uint256; 
+    using SafeMath for uint256;
     
-    uint256 public constant PROXY_INDEX = 4;
-    IUniswapV2Pair public lpToken;
-    IStakeGatling public stakeGatling;
-    IPriceSafeChecker public priceChecker;
-    //migrate via factory
-    // IUniswapV2Factory public factoryAddress;
-
-    struct UserInfo{
-        address user;
-        //actual fund point
-        uint256 tokenPoint;
-        // uint256 lpRate;
-        uint256 totalSupply;
-        uint256 tokenReserve;
-    }
-    
-    uint256 public pendingToken0;
-    uint256 public pendingToken1;
-    uint256 public totalTokenPoint0;
-    uint256 public totalTokenPoint1;
-
-    // in UniswapV2.burn() call ,small LP cause Exception('UniswapV2: INSUFFICIENT_LIQUIDITY_BURNED')
-    uint256 public sentinelAmount = 500;
-    // filter too small asset, saving gas
-    uint256 public minMintToken0;
-    uint256 public minMintToken1;
-
-    mapping(address => UserInfo[]) userInfo0;
-    mapping(address => UserInfo[]) userInfo1;
-
-    event Stake(bool _index0, address _user, uint256 _amount);
 
     constructor(address _lpAddress) public {
         lpToken = IUniswapV2Pair(_lpAddress);
     }
-
-
     function setStakeGatling(address _gatlinAddress) public onlyOwner() {
         stakeGatling = IStakeGatling(_gatlinAddress);
     }
@@ -88,6 +55,8 @@ contract MatchPairStableDelegateV2 is  IMatchPair, Ownable, MasterCaller{
         updatePool();
     }
 
+    
+
     function _getPendingAndPoint(uint256 _index) private returns (uint256 pendingAmount,uint256 totalPoint) {
         if(_index == 0) {
             return (pendingToken0, totalTokenPoint0);
@@ -99,23 +68,22 @@ contract MatchPairStableDelegateV2 is  IMatchPair, Ownable, MasterCaller{
     function updatePool() private {
 
         if( pendingToken0 > minMintToken0 && pendingToken1 > minMintToken1 ) {
-            
-            (uint amountA, uint amountB) = getPairAmount( lpToken.token0(), lpToken.token1(), pendingToken0, pendingToken1 ); 
 
-            TransferHelper.safeTransfer(lpToken.token0(), address(lpToken), amountA);
-            TransferHelper.safeTransfer(lpToken.token1(), address(lpToken), amountB);
-            pendingToken0 = pendingToken0.sub(amountA);
-            pendingToken1 = pendingToken1.sub(amountB);
-            //mint LP
-            uint liquidity = lpToken.mint(stakeGatling.lpStakeDst());
-
-            //send Token to UniPair
-            stakeGatling.stake(liquidity);
+            (uint amountA, uint amountB) = getPairAmount( pendingToken0, pendingToken1 ); 
+            if( amountA > minMintToken0 && amountB > minMintToken1 ) {
+                
+                TransferHelper.safeTransfer(lpToken.token0(), address(lpToken), amountA);
+                TransferHelper.safeTransfer(lpToken.token1(), address(lpToken), amountB);
+                pendingToken0 = pendingToken0.sub(amountA);
+                pendingToken1 = pendingToken1.sub(amountB);
+                //mint LP
+                uint liquidity = lpToken.mint(stakeGatling.lpStakeDst());
+                //send Token to UniPair
+                stakeGatling.stake(liquidity);
+            }
         }
     }
     function getPairAmount(
-        address tokenA,
-        address tokenB,
         uint amountADesired,
         uint amountBDesired  ) private returns ( uint amountA, uint amountB) {
             
@@ -187,7 +155,6 @@ contract MatchPairStableDelegateV2 is  IMatchPair, Ownable, MasterCaller{
             uint256 sellPaired = tokenPaired.sub(expectPaired);
             uint256 amountOut = _execSwap((_index+1)%2 , sellPaired);          
 
-
             tokenCurrent = tokenCurrent.add(amountOut);
             tokenPaired = tokenPaired.sub(sellPaired);
         }
@@ -197,13 +164,9 @@ contract MatchPairStableDelegateV2 is  IMatchPair, Ownable, MasterCaller{
             uint256 sellAmount = tokenCurrent.sub(expectTokenByLP);
             uint256 amountOut = _execSwap(_index, sellAmount);
 
-
-
             tokenCurrent = tokenCurrent.sub(sellAmount);
             tokenPaired = tokenPaired.add(amountOut);
         }
-
-
 
     }
 

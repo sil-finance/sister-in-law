@@ -69,21 +69,20 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
 
         if( pendingToken0 > minMintToken0 && pendingToken1 > minMintToken1 ) {
             
-            (uint amountA, uint amountB) = getPairAmount( lpToken.token0(), lpToken.token1(), pendingToken0, pendingToken1 ); 
-
-            TransferHelper.safeTransfer(lpToken.token0(), address(lpToken), amountA);
-            TransferHelper.safeTransfer(lpToken.token1(), address(lpToken), amountB);
-            pendingToken0 = pendingToken0.sub(amountA);
-            pendingToken1 = pendingToken1.sub(amountB);
-            //mint LP
-            uint liquidity = lpToken.mint(stakeGatling.lpStakeDst());
-            //send Token to UniPair
-            stakeGatling.stake(liquidity);
+            (uint amountA, uint amountB) = getPairAmount( pendingToken0, pendingToken1 ); 
+            if( amountA > minMintToken0 && amountB > minMintToken1 ) {
+                TransferHelper.safeTransfer(lpToken.token0(), address(lpToken), amountA);
+                TransferHelper.safeTransfer(lpToken.token1(), address(lpToken), amountB);
+                pendingToken0 = pendingToken0.sub(amountA);
+                pendingToken1 = pendingToken1.sub(amountB);
+                //mint LP
+                uint liquidity = lpToken.mint(stakeGatling.lpStakeDst());
+                //send Token to UniPair
+                stakeGatling.stake(liquidity);
+            }
         }
     }
     function getPairAmount(
-        address tokenA,
-        address tokenB,
         uint amountADesired,
         uint amountBDesired  ) private returns ( uint amountA, uint amountB) {
             
