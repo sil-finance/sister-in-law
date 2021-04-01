@@ -141,16 +141,13 @@ contract MatchPairStableDelegateV2 is MatchPairStorageStableV2,  IMatchPair, Own
         private 
         returns (uint256 tokenCurrent, uint256 tokenPaired)
     {
-        if(_lpAmount > sentinelAmount) {
+        if(_lpAmount < sentinelAmount) {
             return (0,0);
         }
         (tokenCurrent, tokenPaired) = _burnLp(_index, _lpAmount);
 
-        //todo to be removed
-        // uint256 expectPaired = tokenCurrent.mul(tokenPaired).div(expectTokenByLP);
         if (expectTokenByLP > tokenCurrent) { // Lose: sell paird Token for currentToken
             uint256 expectPaired = tokenCurrent.mul(tokenPaired).div(expectTokenByLP);
-
 
             uint256 sellPaired = tokenPaired.sub(expectPaired);
             uint256 amountOut = _execSwap((_index+1)%2 , sellPaired);          
@@ -167,7 +164,6 @@ contract MatchPairStableDelegateV2 is MatchPairStorageStableV2,  IMatchPair, Own
             tokenCurrent = tokenCurrent.sub(sellAmount);
             tokenPaired = tokenPaired.add(amountOut);
         }
-
     }
 
     function _execSwap(uint256 indexIn, uint256 amountIn ) private returns(uint256 amountOunt) {
