@@ -198,14 +198,13 @@ contract MatchPairStableDelegateV2 is MatchPairStorageStableV2,  IMatchPair, Own
     }
 
     function _burnLp(uint256 _index, uint256 _lpAmount) private returns (uint256 tokenCurrent, uint256 tokenPaired) {
-        //send LP to address(this);
-        // update profitRate
-        if(_lpAmount > sentinelAmount) {
-            (tokenCurrent, tokenPaired) = stakeGatling.burn(address(this), _lpAmount);
-            if(_index == 1) {
-                (tokenCurrent, tokenPaired) = (tokenPaired, tokenCurrent );
-            }
+        //precheck before call this function
+        // if(_lpAmount > sentinelAmount) {
+        (tokenCurrent, tokenPaired) = stakeGatling.burn(address(this), _lpAmount);
+        if(_index == 1) {
+            (tokenCurrent, tokenPaired) = (tokenPaired, tokenCurrent );
         }
+        // }
     }
 
     function untakePreCalc(bool _index0, address _user,  uint256 _expectAmount) 
