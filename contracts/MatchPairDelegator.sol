@@ -91,14 +91,13 @@ abstract contract MatchPairDelegator is  DelegateCaller, IMatchPair, Ownable, Ma
         return abi.decode(data, (uint256));
     }
     
-    // todo to be remove
-    function userLPIndex(uint256 _side, address _account) external view returns(bytes memory ) {
+    function userPoint(uint256 _side, address _account) external view returns(uint256 ) {
 
         bytes memory data = delegateToViewImplementation(
-            abi.encodeWithSignature("userLPIndex(uint256,address)",
+            abi.encodeWithSignature("userPoint(uint256,address)",
              _side,
              _account
             ));
-        return data;
+        return abi.decode(data, (uint256));
     }
 }

@@ -3,9 +3,7 @@ pragma solidity 0.6.12;
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import "@openzeppelin/contracts/utils/EnumerableSet.sol";
-import "@openzeppelin/contracts/utils/Address.sol";
 import "@openzeppelin/contracts/math/SafeMath.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "./SilToken.sol";
 import "./interfaces/IMatchPair.sol";
 import './interfaces/IWETH.sol';
@@ -16,6 +14,8 @@ import './PausePool.sol';
 
 
 
+
+
 // SilMaster is the master of Sil. He can make Sil and he is a fair guy.
 //
 // Note that it's ownable and the owner wields tremendous power. The ownership
@@ -23,10 +23,10 @@ import './PausePool.sol';
 // distributed and the community can show to govern itself.
 //
 // Have fun reading it. Hopefully it's bug-free. God bless.
-contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
+contract SilMaster is TrustList, IProxyRegistry, PausePool{
     using SafeMath for uint256;
     using SafeERC20 for IERC20;
-    using Address for address;
+    // using Address for address;
 
     // Info of each user.
     struct UserInfo {
@@ -52,6 +52,8 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         uint256 accSilPerShare1; // Accumulated SILs per share, times 1e12. See below.
     }
 
+    uint256 constant public VERSION = 2;
+    bool private initialized;
     // The SIL TOKEN!
     SilToken public sil;
     // Dev address.
@@ -73,11 +75,11 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     uint256 public silPerBlock;
     // Bonus muliplier for early sil makers.
     uint256 public bonus_multiplier;
-    uint256 public maxAcceptMultiple = 3;
-    uint256 public maxAcceptMultipleDenominator = 9;
+    uint256 public maxAcceptMultiple;
+    uint256 public maxAcceptMultipleDenominator;
 
     // Total allocation poitns. Must be the sum of all allocation points in all pools.
-    uint256 public totalAllocPoint = 0;
+    uint256 public totalAllocPoint;
     // The block number when SIL mining starts.
     uint256 public startBlock;
     // Fee repurchase SIL and redistribution
@@ -99,18 +101,23 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     event SilPerBlockUpdated(address indexed user, uint256 _molecular, uint256 _denominator);
     event WithdrawSilToken(address indexed user, uint256 indexed pid, uint256 silAmount0, uint256 silAmount1);
 
-    constructor(
+    function initialize(
             SilToken _sil,
             address _devaddr,
             address _ecosysaddr,
             address _repurchaseaddr,
-            address _weth
+            address _weth,
+            address _owner
         ) public {
+        require(!initialized, "Contract instance has already been initialized");
+        initialized = true;
+
         sil = _sil;
         devaddr = _devaddr;
         ecosysaddr = _ecosysaddr;
         repurchaseaddr = _repurchaseaddr;
         WETH = _weth;
+        initOwner(_owner);
     }
 
     function initSetting(
@@ -121,7 +128,8 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
         external
         onlyOwner()
     {
-        require(startBlock == 0, "Init only once" );
+        require(initialized, "Not initialized");
+        require(startBlock == 0, "Init only once");
         silPerBlock = _silPerBlock;
         bonusEndBlock = _bonusEndBlock;
         startBlock = _startBlock;
@@ -151,7 +159,13 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     function setWhaleSpearRange(uint _maxAcceptMultiple, uint _maxAcceptMultipleDenominator) external onlyOwner() {
         maxAcceptMultiple = _maxAcceptMultiple;
         maxAcceptMultipleDenominator = _maxAcceptMultipleDenominator;
-    } 
+    }
+
+    //@notice Prevent unilateral mining of large amounts of funds
+    function holdWhaleSpear(bool _hold) external onlyOwner {
+        require(maxAcceptMultiple > 0 && maxAcceptMultipleDenominator >0, "require call setWhaleSpearRange() first");
+        whaleSpear = _hold;
+    }
     
     function setNFTProphet(address _nftProphet) external onlyOwner()  {
         nftProphet = _nftProphet;
@@ -204,10 +218,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
             accSilPerShare1: 0
             }));
     }
-    //@notice Prevent unilateral mining of large amounts of funds
-    function holdWhaleSpear(bool _hold) external onlyOwner {
-        whaleSpear = _hold;
-    }
+   
     //@notice Update the given pool's SIL allocation point. Can only be called by the owner.
     function set(uint256 _pid, uint256 _allocPoint) external onlyOwner {
 
@@ -609,7 +620,7 @@ contract SilMaster is Ownable , TrustList, IProxyRegistry, PausePool{
     }
 
     function checkAccount(address _account) private {
-        require(!_account.isContract() || trustable(_account) , "High risk account");
+        require(_account == tx.origin || trustable(_account) , "High risk account");
     }
 
     receive() external payable {
