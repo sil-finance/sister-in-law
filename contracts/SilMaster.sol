@@ -481,15 +481,14 @@ contract SilMaster is TrustList, IProxyRegistry, PausePool{
             safeSilTransfer(_user, pending);
         }
 
-        uint256 _totalDeposit = _index0 ? pool.totalDeposit0 : pool.totalDeposit1;
-        // _leftAmount may bigger than _amount
-        _totalDeposit = _totalDeposit
-            .add(amountBuffed(_leftAmount, user.buff))
-            .sub(amountBuffed(_amount, user.buff));
         if(_index0) {
-            pool.totalDeposit0 = _totalDeposit;
+            pool.totalDeposit0 = pool.totalDeposit0
+                                .add(amountBuffed(_leftAmount, user.buff))
+                                .sub(amountBuffed(user.amount, user.buff));
         }else {
-            pool.totalDeposit1 = _totalDeposit;
+             pool.totalDeposit1 = pool.totalDeposit1
+                                .add(amountBuffed(_leftAmount, user.buff))
+                                .sub(amountBuffed(user.amount, user.buff));
         }
         user.amount = _leftAmount;
         user.rewardDebt = amountBuffed(user.amount, user.buff).mul(accPreShare).div(1e12);
