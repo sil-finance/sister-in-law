@@ -64,6 +64,14 @@ contract StakeGatlingDelegate is GatlingStorage, Ownable, IStakeGatling, MasterC
     }
 
     function setRouterPath(uint256 _tokenSide, address[] calldata path ) public onlyOwner() {
+        require(_tokenSide < 2, "tokenSide must 0 or 1");
+        //Check token address of router start point
+        if(profitStrategy != address(0)) {
+            require(path[0] == IProfitStrategy(profitStrategy).earnToken(), "Path start incorrect");
+            //token destination
+            address dest = _tokenSide == 0 ? IUniswapV2Pair(stakeLpPair).token0() : IUniswapV2Pair(stakeLpPair).token1();
+            require(path[path.length -1] == dest, "Path destination incorrect");
+        }
 
         if(_tokenSide == 0 && routerPath0.length > 0) {
             delete routerPath0;
@@ -79,11 +87,9 @@ contract StakeGatlingDelegate is GatlingStorage, Ownable, IStakeGatling, MasterC
         address[] storage routerPath = _tokenSide == 0? routerPath0: routerPath1;
 
         for (uint i=0; i< path.length; i++) {
-
-            address _erc20Token = path[i];
-            routerPath.push(_erc20Token);
-            _approveWithCheck(_erc20Token, v2Router);
+            routerPath.push(path[i]);
         }
+         _approveWithCheck(path[0], v2Router);
     }
     function _approveWithCheck(address _erc20Token, address _spender) private  {
         if( IERC20(_erc20Token).allowance(address(this), _spender) == 0 ) {
