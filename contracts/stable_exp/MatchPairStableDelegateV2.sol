@@ -86,7 +86,7 @@ contract MatchPairStableDelegateV2 is MatchPairStorageStableV2,  IMatchPair, Own
     function getPairAmount(
         uint amountADesired,
         uint amountBDesired  ) private returns ( uint amountA, uint amountB) {
-            
+
         (uint reserveA, uint reserveB,) = lpToken.getReserves();
         _checkPrice(reserveA, reserveB);
 
@@ -114,7 +114,7 @@ contract MatchPairStableDelegateV2 is MatchPairStorageStableV2,  IMatchPair, Own
             uint256 lp_amount = _userAmountByPoint(untakePoint , totalPoint, stakeGatling.totalLPAmount());
 
             //burn and cover impermanence loss
-            (uint256 tokenCurrent, uint256 tokenPaired) = burnLpWithExcept(_index, lp_amount, untakeOriginalAmount.sub(non_il_amount));
+            (uint256 tokenCurrent, uint256 tokenPaired) = burnLpWithExpect(_index, lp_amount, untakeOriginalAmount.sub(non_il_amount));
 
             _withdrawAmount = non_il_amount.add(tokenCurrent);
             if(_index == 0 ) {
@@ -137,7 +137,7 @@ contract MatchPairStableDelegateV2 is MatchPairStorageStableV2,  IMatchPair, Own
         TransferHelper.safeTransfer( _index == 0 ? lpToken.token0() : lpToken.token1(), masterCaller(), _withdrawAmount);
     }
 
-    function burnLpWithExcept(uint256 _index, uint256 _lpAmount, uint256 expectTokenByLP)
+    function burnLpWithExpect(uint256 _index, uint256 _lpAmount, uint256 expectTokenByLP)
         private 
         returns (uint256 tokenCurrent, uint256 tokenPaired)
     {

@@ -37,10 +37,10 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
 
         // 1. updateLpAmount
         _updateLpProfit();
-        (uint256 lpTokenAmount, uint256 lpTokenAmoun1) = stakeGatling.totalToken();
+        (uint256 lpTokenAmount, uint256 lpTokenAmount1) = stakeGatling.totalToken();
 
         if (_index == 1) {
-            lpTokenAmount = lpTokenAmoun1;
+            lpTokenAmount = lpTokenAmount1;
         }
         (uint256 pendingAmount, uint256 totalPoint) = _getPendingAndPoint(_index);
 
@@ -106,9 +106,9 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
         _updateLpProfit();
         address tokenCurrent = _index == 0 ? lpToken.token0() : lpToken.token1();
 
-        uint256 totalTokenAmoun = totalTokenAmount(_index);
+        uint256 totalTokenAmount = totalTokenAmount(_index);
         (uint256 pendingAmount, uint256 totalPoint) = _getPendingAndPoint(_index);
-        uint256 userAmount =  _userAmountByPoint( userPoint(_index, _user) , totalPoint, totalTokenAmoun);
+        uint256 userAmount =  _userAmountByPoint( userPoint(_index, _user) , totalPoint, totalTokenAmount);
 
         if(_amount > userAmount) {
             _amount = userAmount;
@@ -133,7 +133,7 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
             }
         }
 
-        uint256 pointAmount = _withdrawAmount.mul(totalPoint).div(totalTokenAmoun);
+        uint256 pointAmount = _withdrawAmount.mul(totalPoint).div(totalTokenAmount);
         _subTotalPoint(_index, _user, pointAmount);
 
         _leftAmount = userAmount.sub(_withdrawAmount);
@@ -233,9 +233,9 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
         
         uint256 userPoint = userPoint(_index, _user);
         uint256 totalPoint = _index == 0? totalTokenPoint0 : totalTokenPoint1;
-        uint256 totalTokenAmoun = _index == 0? pendingToken0 : pendingToken1;
+        uint256 totalTokenAmount = _index == 0? pendingToken0 : pendingToken1;
 
-        return _userAmountByPoint(userPoint, totalPoint, totalTokenAmoun);
+        return _userAmountByPoint(userPoint, totalPoint, totalTokenAmount);
     }
 
     function userPoint(uint256 _index, address _user) public view returns (uint256 point) {

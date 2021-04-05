@@ -13,6 +13,9 @@ contract StrategySushiStorage {
     //earnToken
     address public constant earnTokenAddr = 0x6B3595068778DD592e39A122f4f5a5cF09C90fE2;
     address public stakeGatling;
+    address public admin;
     uint256 public pid;
+
+    event AdminChanged(address previousAdmin, address newAdmin); 
 
 }

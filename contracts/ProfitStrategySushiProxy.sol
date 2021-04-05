@@ -14,17 +14,32 @@ import "./storage/StrategySushiStorage.sol";
  */
 contract ProfitStrategySushiProxy is StrategySushiStorage, Ownable , ERC1967Proxy {
 
-    constructor (address  _delegate, address _pair, uint256 _pid, address _stakeGatling)  ERC1967Proxy(_delegate, '')  public {
+    modifier ifAdmin() {
+        require (msg.sender == admin, "Admin require");
+        _;
+    }
+
+    constructor (address  _delegate, address _admin,  address _pair, uint256 _pid, address _stakeGatling)  ERC1967Proxy(_delegate, '')  public {
         stakeLpPair = _pair;
         stakeGatling = _stakeGatling;
         pid = _pid;
         safeApprove(stakeLpPair, address(stakeRewards), ~uint256(0));
         transferOwnership(_stakeGatling);
+        admin = _admin;
     }
 
     function safeApprove(address token, address to, uint value) internal {
         (bool success, bytes memory data) = token.call(abi.encodeWithSelector(0x095ea7b3, to, value));
         require(success && (data.length == 0 || abi.decode(data, (bool))), 'TransferHelper: APPROVE_FAILED');
+    }
+
+    function upgradeTo(address newImplementation) external ifAdmin() {
+        _upgradeTo(newImplementation);
+    }
+
+    function changeAdmin(address newAdmin) external ifAdmin() {
+        emit AdminChanged(admin, newAdmin); 
+        admin = newAdmin;
     }
 
 }
