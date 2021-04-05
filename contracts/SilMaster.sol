@@ -203,9 +203,7 @@ contract SilMaster is TrustList, IProxyRegistry, PausePool{
     // XXX DO NOT add the same LP token more than once. Rewards will be messed up if you do.
     function add(uint256 _allocPoint, IMatchPair _matchPair) external onlyOwner {
 
-        // if (_withUpdate) {
         massUpdatePools();
-        // }
         uint256 lastRewardBlock = block.number > startBlock ? block.number : startBlock;
         totalAllocPoint = totalAllocPoint.add(_allocPoint);
         poolInfo.push(PoolInfo({
@@ -346,6 +344,7 @@ contract SilMaster is TrustList, IProxyRegistry, PausePool{
 
     function grantBuff(uint256 _pid, uint256 _index, uint256 _value, address _user) public {
         require(msg.sender == nftProphet, "Grant buff: Prophet allowed");
+        require(_index < 2, "Index must 0 or 1" );
 
         UserInfo storage user = _index == 0  ? userInfo0[_pid][_user] : userInfo1[_pid][_user];
         // if user.amount == 0, just set `buff` value
@@ -395,6 +394,7 @@ contract SilMaster is TrustList, IProxyRegistry, PausePool{
 
     // Deposit LP tokens to SilMaster.
     function deposit(uint256 _pid, uint256 _index,  uint256 _amount) whenNotPaused(_pid) public  {
+        require(_index < 2, "Index must 0 or 1" );
         //check account (normalAccount || trustable)
         checkAccount(msg.sender);
         bool _index0 = _index == 0;
@@ -441,11 +441,11 @@ contract SilMaster is TrustList, IProxyRegistry, PausePool{
     }
 
     function withdrawToken(uint256 _pid, uint256 _index, uint256 _amount) external {
+        require(_index < 2, "Index must 0 or 1" );
         address _user = msg.sender;
         PoolInfo storage pool = poolInfo[_pid];
 
         //withdrawToken from MatchPair
-
         (uint256 untakeTokenAmount, uint256 leftAmount) = pool.matchPair.untakeToken(_index, _user, _amount);
         address targetToken = pool.matchPair.token(_index);
 
