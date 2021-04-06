@@ -258,7 +258,7 @@ contract SilMaster is TrustList, IProxyRegistry, PausePool{
             uint256 multiplier = getMultiplier(pool.lastRewardBlock, block.number);
             
             uint256 silReward = multiplier.mul(silPerBlock).mul(pool.allocPoint).div(totalAllocPoint);//
-            uint256 totalMint = sil.balanceOf(address(this));
+            uint256 totalMint = sil.totalSupply();
             if(sil.maxMint()< totalMint.add(silReward)) {
                 silReward = sil.maxMint().sub(totalMint);
             }
