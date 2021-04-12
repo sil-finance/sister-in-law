@@ -35,6 +35,7 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
      */
     function stake(uint256 _index, address _user,uint256 _amount) public  override {
 
+        _checkPrice();
         // 1. updateLpAmount
         _updateLpProfit();
         (uint256 lpTokenAmount, uint256 lpTokenAmount1) = stakeGatling.totalToken();
@@ -87,7 +88,6 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
         uint amountBDesired  ) private returns ( uint amountA, uint amountB) {
             
         (uint reserveA, uint reserveB,) = lpToken.getReserves();
-        _checkPrice(reserveA, reserveB);
 
         uint amountBOptimal = UniswapV2Library.quote(amountADesired, reserveA, reserveB);
         if (amountBOptimal <= amountBDesired) {
@@ -103,6 +103,7 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
         override
         returns (uint256 _withdrawAmount, uint256 _leftAmount) 
     {
+        _checkPrice();
         _updateLpProfit();
         address tokenCurrent = _index == 0 ? lpToken.token0() : lpToken.token1();
 
@@ -145,8 +146,9 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
     /**
      * @notice price feeded by  Oracle
      */
-    function _checkPrice(uint256 reserve0, uint256 reserve1) private {
+    function _checkPrice() private {
         if(address(priceChecker) != address(0) ) {
+            (uint reserve0, uint reserve1,) = lpToken.getReserves();
             priceChecker.checkPrice(reserve0, reserve1);
         }
     }
@@ -165,7 +167,6 @@ contract MatchPairDelegateV2 is MatchPairStorageV2, IMatchPair, Ownable, MasterC
     function burnFromLp(uint256 _index, uint256 amountRequerViaLp, address tokenCurrent) private returns(uint256) {
 
         (uint reserveA, uint reserveB,) = lpToken.getReserves();
-        _checkPrice(reserveA, reserveB);
 
         uint256 requirLp = amountRequerViaLp.mul(lpToken.totalSupply()).div(IERC20(tokenCurrent).balanceOf(address(lpToken)));
         if(requirLp >  sentinelAmount) { // small amount lp cause Exception in UniswapV2.burn();

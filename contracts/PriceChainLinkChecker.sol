@@ -13,10 +13,10 @@ contract PriceChainLinkChecker is IPriceSafeChecker, Ownable {
 
     // 1WETH = 1021 USDT, Token1 = WETH; Price = Rusdt/ Reth
     bool public token1Direct;
+    uint256 public immutable decimals;
     // min price 9/10
     uint256 public minPriceNumerator;
     uint256 public minPriceDenominator;
-
     // max price 11/10
     uint256 public maxPriceNumerator;
     uint256 public maxPriceDenominator;
@@ -24,13 +24,14 @@ contract PriceChainLinkChecker is IPriceSafeChecker, Ownable {
     AggregatorV3Interface internal priceFeed;
 
     /**
-     * Network: Kovan
-     * Aggregator: ETH/USD
-     * Address: 0x9326BFA02ADD2366b30bacB125260Af641031331
+     * _oracle : chainLink Oracle address
+     * _token1Direct: Token0 in LP is token-base. ex: USDT/ETH, ETH is token1, _token1Direct = false
      */
     constructor(address _oracle, bool _token1Direct) public {
         priceFeed = AggregatorV3Interface(_oracle);
         token1Direct = _token1Direct;
+        uint256 decimal = priceFeed.decimals();
+        decimals = uint256(10)**decimal;
     }
 
     /**
@@ -49,20 +50,23 @@ contract PriceChainLinkChecker is IPriceSafeChecker, Ownable {
     function checkPrice(uint256 _reserve0, uint256 _reserve1) external view override {
 
         (uint256 reserveDirect, uint256 reserveBased) =  token1Direct? (_reserve0, _reserve1):( _reserve1, _reserve0);
-        // currentPrice
-        uint256 currentPrice = reserveDirect.div(reserveBased);
+        // currentPrice = ETHReserve * decimals / TokenReserve
+        uint256 currentPrice = reserveDirect.mul(decimals).div(reserveBased);
         uint256 trustedPrice = getLatestPrice();
 
         require(currentPrice.mul(maxPriceDenominator) <= trustedPrice.mul(maxPriceNumerator), "Hight risk: Overpriced!");
         require(trustedPrice.mul(minPriceNumerator) <= currentPrice.mul(minPriceDenominator), "Hight risk: Price is too low!");
-    } 
+    }
 
+    function setToken1Direct(bool _token1Direct) external  onlyOwner() {
+        token1Direct = _token1Direct;
+    }
     function setPriceRange(
         uint256 _minPriceNumerator, 
         uint256 _minPriceDenominator,
         uint256 _maxPriceNumerator,
         uint256 _maxPriceDenominator
-        ) 
+        )
         public 
         onlyOwner()
     {
